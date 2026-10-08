@@ -1,5 +1,7 @@
 # アプリケーション設計
 
+> β0.2 更新：モックを維持し、作業用 PC 向けの読み取り専用 API / ApiProvider を追加。詳細は [API 設計](api-design.md)。`infra/monitoring/` に Prometheus / Node Exporter の配備案を追加し、[監視基盤の運用手順](monitoring-infrastructure.md) に安全確認・停止復旧を整理した。実機への接続・コンテナ起動・本番配備は未実施。以下の初期計画・β0.1 の記述は経緯として保持する。
+
 > β0.1 実装時の補足：以下は初期設計を保持した文書。段階 1〜4 のモック版は実装済みで、起動方法は README、検証状況は [verification.md](verification.md) を参照する。「今回は作成しない」等は設計時点の作業範囲を指す。
 
 ## 1. 目的と範囲

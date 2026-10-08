@@ -17,7 +17,7 @@ const snapshotSchema = z.object({
   host: z.object({ id: z.string(), name: z.string(), osLabel: z.string() }), fetchedAt: iso,
   cpu: rawObservation, memory: rawObservation, uptime: rawObservation,
   filesystems: z.array(z.object({ id: z.string(), mountpoint: z.string(), capacity: rawObservation })).min(1),
-  services: z.array(z.object({ id: z.string(), name: z.string(), expectedState: z.enum(['running', 'stopped']), state: rawObservation })).min(1),
+  services: z.array(z.object({ id: z.string(), name: z.string(), expectedState: z.enum(['running', 'stopped']), state: rawObservation })),
   history: z.object({ cpu: z.array(z.unknown()), memory: z.array(z.unknown()) }),
 });
 
@@ -54,7 +54,9 @@ export function validateSnapshot(input: unknown, now: number): MonitoringSnapsho
     uptime: observation(raw.uptime, z.object({ seconds: nonnegative, bootedAt: iso })
       .refine((v) => Date.parse(v.bootedAt) <= now), now),
     filesystems: raw.filesystems.map((fs) => ({ ...fs, capacity: observation(fs.capacity, capacityValue, now) })),
-    services: raw.services.map((service) => ({ ...service, state: observation(service.state, z.enum(['running', 'stopped', 'failed', 'unknown']), now) })),
+    services: raw.services.map((service) => ({ ...service, state: service.state.value === 'unknown'
+      ? { value: 'unknown', observedAt: null, quality: 'unavailable', reason: service.state.reason ?? '計測方式未確定' }
+      : observation(service.state, z.enum(['running', 'stopped', 'failed', 'unknown']), now) })),
     history: { cpu: history(raw.history.cpu, now), memory: history(raw.history.memory, now) },
   };
 }

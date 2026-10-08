@@ -1,0 +1,34 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: tadami-node
+    scheme: http
+    metrics_path: /metrics
+    follow_redirects: false
+    honor_labels: false
+    honor_timestamps: false
+    sample_limit: 5000
+    label_limit: 30
+    label_name_length_limit: 200
+    label_value_length_limit: 512
+    body_size_limit: 5MB
+    static_configs:
+      - targets: [node-exporter:9100]
+        labels:
+          instance: tadami
+
+  - job_name: tadami-prometheus
+    scheme: http
+    metrics_path: /metrics
+    follow_redirects: false
+    honor_labels: false
+    honor_timestamps: false
+    sample_limit: 10000
+    body_size_limit: 10MB
+    static_configs:
+      - targets: [localhost:9090]
+        labels:
+          instance: tadami-prometheus

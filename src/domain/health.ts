@@ -32,6 +32,7 @@ export function summarize(snapshot: MonitoringSnapshot | null, now: number, fail
     observed(snapshot.cpu, thresholdHealth(snapshot.cpu.value?.usagePercent ?? null, MONITORING.thresholds.cpu)),
     observed(snapshot.memory, thresholdHealth(memory ? usagePercent(memory.totalBytes, memory.availableBytes) : null, MONITORING.thresholds.memory)),
     observed(snapshot.uptime, 'normal'),
+    ...(snapshot.services.length === 0 ? ['unknown' as const] : []),
     ...snapshot.filesystems.map(({ capacity }) => observed(capacity, thresholdHealth(capacity.value ? usagePercent(capacity.value.totalBytes, capacity.value.freeBytes) : null, MONITORING.thresholds.storage))),
     ...snapshot.services.map((service) => observed(service.state, serviceHealth(service))),
   ];

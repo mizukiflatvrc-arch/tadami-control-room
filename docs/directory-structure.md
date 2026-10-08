@@ -1,5 +1,7 @@
 # ディレクトリ構造
 
+> β0.2 更新：モックを維持し、作業用 PC 向けの読み取り専用 API / ApiProvider を追加。詳細は [API 設計](api-design.md)。`infra/monitoring/` に Prometheus / Node Exporter の配備案を追加し、[監視基盤の運用手順](monitoring-infrastructure.md) に安全確認・停止復旧を整理した。実機への接続・コンテナ起動・本番配備は未実施。以下の初期計画・β0.1 の記述は経緯として保持する。
+
 > β0.1 実装時の補足：以下は初期の配置案。モック版ではこの構造に沿って実装し、取得タイムアウト処理を `src/data/request-snapshot.ts` に追加した。実データ用 `server/`・`src/data/api/` はまだ作成していない。検証記録を `docs/verification.md` に追加した。
 
 ## 現在作成するファイル
@@ -110,3 +112,9 @@ docs/operations.md                # 合意済みの配備・復旧手順
 依存方向は `画面 → 取得フック → Provider インターフェース` とする。MockProvider と ApiProvider の選択は `app/create-provider.ts` で行い、各パネルでモード分岐しない。判定・計算・書式処理は React に依存させず、テスト可能な関数として分離する。
 
 Prometheus、Grafana、systemd、リバースプロキシなどの実機設定は、初期リポジトリに複製・新設しない。後続で必要になった場合も実機構成を確認した変更案として扱う。
+
+## β0.2 で実際に追加した配置
+
+`server/app.ts` が API の固定経路を担当し、`server/config.ts` と `server/prometheus/{client,queries,mapper}.ts` を分離した。契約は `src/domain/` を共有。`fixtures/prometheus/` と `tests/server/` に応答・結合テストを配置し、`tools/dev-fixture.ts` が PC 内の検証起動を担当する。
+
+`infra/monitoring/` は `compose.yaml`、`prometheus.yml`、`images.lock.json`、`.env.example` のみ。DB・実認証情報・既存サーバー設定は含めない。`tools/monitoring/check-config.ts` と `tests/server/infrastructure.test.ts` が静的安全検査を担当する。

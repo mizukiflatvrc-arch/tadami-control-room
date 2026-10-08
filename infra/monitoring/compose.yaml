@@ -1,0 +1,108 @@
+# 配備前レビュー用。起動前に docs/monitoring-infrastructure.md を読むこと。
+name: tadami-monitoring
+
+services:
+  prometheus:
+    image: quay.io/prometheus/prometheus:v3.13.4@sha256:87861b8cf91579109319ebc300f3f1060e6da9c05d6ae8ad15a20c879e84e32e
+    platform: linux/amd64
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    init: true
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.0
+    stop_grace_period: 60s
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=1GB
+      - --web.listen-address=0.0.0.0:9090
+      - --query.timeout=5s
+      - --query.max-concurrency=4
+    volumes:
+      - type: bind
+        source: ./prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${TCR_PROMETHEUS_DATA_DIR:?OS用NVMe上の専用ディレクトリを確認して指定してください}
+        target: /prometheus
+        bind:
+          create_host_path: false
+    networks: [monitoring]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+    platform: linux/amd64
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    init: true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.5
+    command:
+      - --web.listen-address=0.0.0.0:9100
+      - --web.disable-exporter-metrics
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host/root
+      - --collector.disable-defaults
+      - --collector.cpu
+      - --collector.meminfo
+      - --collector.diskstats
+      - --collector.filesystem
+      - --collector.stat
+      - --collector.time
+      - --collector.mdadm
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker|var/lib/containers)($$|/)
+      - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|erofs|sysfs|tmpfs|tracefs)$$
+    volumes:
+      - type: bind
+        source: /proc
+        target: /host/proc
+        read_only: true
+        bind:
+          create_host_path: false
+          propagation: rprivate
+      - type: bind
+        source: /sys
+        target: /host/sys
+        read_only: true
+        bind:
+          create_host_path: false
+          propagation: rprivate
+      - type: bind
+        source: /
+        target: /host/root
+        read_only: true
+        bind:
+          create_host_path: false
+          propagation: rprivate
+    networks: [monitoring]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ホストの ports、host network、既存の共有ネットワークを使用しない。
+networks:
+  monitoring:
+    driver: bridge
+    internal: true
+    attachable: false
+    enable_ipv6: false
