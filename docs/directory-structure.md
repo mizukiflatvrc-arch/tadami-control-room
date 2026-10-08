@@ -1,5 +1,7 @@
 # ディレクトリ構造
 
+> β0.1 実装時の補足：以下は初期の配置案。モック版ではこの構造に沿って実装し、取得タイムアウト処理を `src/data/request-snapshot.ts` に追加した。実データ用 `server/`・`src/data/api/` はまだ作成していない。検証記録を `docs/verification.md` に追加した。
+
 ## 現在作成するファイル
 
 ```text

@@ -1,0 +1,66 @@
+.console { max-width: 1440px; margin: 0 auto; padding: 24px; }
+.console-header { margin-bottom: 8px; }
+.brand-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 6px; border-bottom: 2px solid var(--ink); }
+.brand { display: flex; gap: 14px; align-items: center; min-width: 0; }
+.brand-mark { width: 42px; height: 42px; flex-shrink: 0; fill: none; stroke: var(--ink); stroke-width: 1.4; }
+.eyebrow { font-size: 14px; letter-spacing: .12em; margin-bottom: 2px; }
+.beta { margin-left: 10px; font-family: var(--mono); font-size: 14px; letter-spacing: 0; }
+h1 { font-family: var(--mono); font-size: 27px; letter-spacing: -.045em; line-height: 1.2; font-weight: 700; }
+.terminal-id { display: grid; gap: 4px; text-align: right; font-size: 14px; }
+.terminal-id strong { font-size: 16px; letter-spacing: .2em; }
+.host-line { display: flex; justify-content: space-between; gap: 12px; padding-top: 5px; font-size: 14px; }
+.host-line > div { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.meta-label { font-size: 14px; color: var(--muted); }
+.overview { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 4px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-bottom: 10px; min-height: 46px; }
+.overall-status { display: flex; gap: 10px; align-items: center; }
+.overview-message { flex: 1; font-size: 14px; }
+.refresh-group { display: flex; align-items: center; gap: 14px; }
+.refresh-group button { font-size: 14px; }
+.last-fetch { font-size: 14px; white-space: nowrap; }
+.last-fetch .mono { margin-left: 6px; }
+.dashboard { display: grid; gap: 10px; }
+.dashboard-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }
+.dashboard-row > * { min-width: 0; }
+.panel { border: 1px solid var(--line); min-width: 0; }
+.panel-heading { min-height: 36px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); padding: 5px 14px; flex-wrap: wrap; }
+.panel-heading h2 { display: flex; align-items: center; gap: 12px; font-size: 16px; line-height: 1.5; }
+.panel-number { font-family: var(--mono); font-size: 14px; font-weight: 400; color: var(--muted); border-right: 1px solid var(--faint-line); padding-right: 12px; }
+.panel-detail { font-size: 14px; color: var(--muted); }
+.panel-status { margin-left: auto; }
+.console-footer { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 14px; padding: 6px 0; margin-top: 8px; border-top: 1px solid var(--line); }
+.divider { color: #777; padding: 0 6px; }
+.scenario-control { border: 1px dashed var(--line); display: flex; align-items: center; gap: 12px; padding: 3px 12px; font-size: 14px; }
+.scenario-control select { min-height: 30px; padding-top: 3px; padding-bottom: 3px; }
+.scenario-control label { font-weight: 600; white-space: nowrap; }
+.scenario-control p { flex: 1; color: var(--muted); }
+.dev-label { font-size: 14px; border-left: 1px solid var(--faint-line); padding-left: 12px; white-space: nowrap; }
+.error-detail { flex-basis: 100%; font-size: 14px; padding: 4px 12px; border-left: 3px solid var(--ink); }
+@media (max-width: 999px) {
+  .dashboard-row { grid-template-columns: 1fr; }
+  .host-line { flex-wrap: wrap; }
+  .overview-message { min-width: 40%; }
+  .refresh-group { margin-left: auto; }
+  .scenario-control { flex-wrap: wrap; }
+  .scenario-control p { flex-basis: 100%; order: 3; }
+  .dev-label { margin-left: auto; }
+}
+@media (max-width: 600px) {
+  .console { padding: 16px 12px; }
+  .brand-row { gap: 12px; align-items: flex-start; }
+  .brand { gap: 9px; }
+  .brand-mark { width: 28px; height: 28px; margin-top: 4px; }
+  h1 { font-size: 20px; max-width: 240px; }
+  .eyebrow { font-size: 14px; letter-spacing: 0; }
+  .beta { margin-left: 0; display: inline-block; }
+  .terminal-id { display: none; }
+  .host-line > div { gap: 6px 10px; }
+  .os-label { width: 100%; }
+  .clock { font-size: 14px; }
+  .overview { gap: 10px 14px; }
+  .overview-message { flex-basis: 100%; }
+  .refresh-group { width: 100%; justify-content: space-between; }
+  .panel-heading { gap: 6px 10px; padding: 8px 12px; }
+  .panel-detail { margin-left: auto; }
+  .panel-status { margin-left: auto; }
+  .console-footer { line-height: 1.7; }
+}

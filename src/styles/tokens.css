@@ -1,0 +1,17 @@
+:root {
+  color-scheme: light;
+  --paper: #fff;
+  --ink: #111;
+  --muted: #444;
+  --line: #555;
+  --faint-line: #d2d2d2;
+  --font: 'Noto Sans CJK JP', 'Noto Sans JP', 'Yu Gothic', 'Hiragino Kaku Gothic ProN', 'Meiryo', 'Noto Sans JP Variable', system-ui, sans-serif;
+  --mono: 'DejaVu Sans Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', var(--font);
+  font-family: var(--font);
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--paper);
+  font-synthesis: none;
+  font-weight: 400;
+  line-height: 1.4;
+}

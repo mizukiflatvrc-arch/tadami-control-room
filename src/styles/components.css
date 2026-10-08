@@ -1,0 +1,87 @@
+.mock-badge { display: inline-block; padding: 5px 10px; background: var(--ink); color: white; font-size: 14px; font-weight: 600; letter-spacing: .08em; white-space: nowrap; }
+.status-label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 14px; line-height: 1.4; padding: 1px 7px; border: 1px solid transparent; }
+.status-label > span { font-family: var(--mono); }
+.status-warning { font-weight: 700; border-color: var(--line); }
+.status-critical { background: var(--ink); color: white; font-weight: 700; }
+.status-unknown { border: 1px dashed var(--line); }
+.metric-body { padding: 6px 16px 4px; }
+.metric-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.metric-label { display: block; color: var(--muted); font-size: 14px; }
+.metric-value { display: flex; gap: 10px; align-items: baseline; line-height: 1; }
+.metric-value > .mono { font-size: 36px; letter-spacing: -.055em; }
+.unit { font-size: 18px; }
+.metric-context { font-size: 14px; line-height: 1.8; text-align: right; color: var(--muted); }
+.metric-context strong { font-weight: 500; color: var(--ink); }
+.trend { margin-top: 5px; font-size: 14px; color: var(--muted); }
+.chart-plot { height: 54px; position: relative; padding-left: 34px; }
+.chart-y-axis { position: absolute; inset: -5px auto -5px 0; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; width: 28px; font-size: 14px; }
+.trend svg { width: 100%; height: 54px; }
+.chart-times { display: flex; justify-content: space-between; margin-top: 3px; padding-left: 34px; font-size: 14px; }
+.chart-empty { position: absolute; left: 34px; right: 0; top: 20px; text-align: center; }
+.chart-grid { stroke: var(--faint-line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart-vertical { stroke-dasharray: 2 4; }
+.chart-line { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.observation-note { display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between; font-size: 14px; color: var(--muted); margin-top: 5px; }
+.observation-warning { font-weight: 600; color: var(--ink); }
+.table-wrap { padding: 0 16px; }
+thead th { color: var(--muted); font-size: 14px; border-bottom: 1px solid var(--line); padding: 5px 0; }
+tbody th, tbody td { padding: 3px 0; border-bottom: 1px solid var(--faint-line); font-size: 14px; }
+tbody tr:last-child > * { border-bottom: none; }
+th, td { overflow-wrap: anywhere; }
+.storage-table { table-layout: fixed; }
+.storage-table th:nth-child(1) { width: 21%; }
+.storage-table th:nth-child(2) { width: 24%; }
+.storage-table th:nth-child(3) { width: 17%; }
+.storage-table th:nth-child(4) { width: 22%; }
+.storage-table th:nth-child(5) { width: 16%; }
+.storage-table td, .storage-table th { padding-right: 10px; }
+.storage-table td:last-child, .storage-table th:last-child { padding-right: 0; }
+.mountpoint { font-family: var(--font); }
+.usage-cell { display: flex; align-items: center; gap: 10px; }
+.usage-cell > .mono { white-space: nowrap; }
+.meter { flex: 1; max-width: 100px; height: 9px; border: 1px solid var(--line); padding: 1px; }
+.meter > span { display: block; height: 100%; background: var(--ink); }
+.row-status { display: flex; gap: 5px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.row-time { color: var(--muted); font-size: 14px; }
+.table-note { font-size: 14px; color: var(--muted); padding: 3px 16px 5px; }
+.empty-table { padding: 26px 0; color: var(--muted); }
+.uptime-body { padding: 10px 16px; }
+.uptime-value { display: flex; align-items: baseline; gap: 8px; margin: 5px 0 8px; flex-wrap: wrap; }
+.uptime-value > .mono { font-size: 38px; line-height: 1; letter-spacing: -.065em; }
+.uptime-value > span:not(.mono) { font-size: 14px; color: var(--muted); margin-right: 5px; }
+.boot-time { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid var(--faint-line); font-size: 14px; }
+.services-table { table-layout: fixed; }
+.services-table th:nth-child(1) { width: 52%; }
+.services-table th:nth-child(2) { width: 26%; }
+.services-table th:nth-child(3) { width: 22%; }
+.services-table tbody th { padding-right: 10px; }
+.services-table td:last-child, .services-table th:last-child { text-align: right; }
+.expected-stop { color: var(--muted); font-size: 14px; margin-left: 8px; display: inline-block; }
+.previous-state { display: block; font-size: 14px; color: var(--muted); }
+@media (max-width: 600px) {
+  .metric-body { padding: 12px; }
+  .metric-value > .mono { font-size: 38px; }
+  .metric-context { font-size: 14px; }
+  .table-wrap { padding: 0 12px; }
+  .storage-table thead { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }
+  .storage-table, .storage-table tbody { display: block; }
+  .storage-table tr { display: block; border-bottom: 1px solid var(--line); padding: 9px 0; }
+  .storage-table tr:last-child { border: 0; }
+  .storage-table tbody th { display: block; width: 100%; font-size: 16px; font-weight: 600; padding: 4px 0 8px; border: 0; }
+  .storage-table tbody th:first-child { width: 100%; }
+  .storage-table td { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; width: 100%; padding: 5px 0; border: 0; text-align: right; }
+  .storage-table td::before { content: attr(data-label); font-family: var(--font); font-size: 14px; color: var(--muted); text-align: left; margin-right: auto; flex-shrink: 0; }
+  .storage-table .meter { display: none; }
+  .storage-table .row-status { gap: 12px; }
+  .storage-table .empty-table { display: block; text-align: left; }
+  .table-note { padding: 5px 12px 12px; line-height: 1.6; }
+  .uptime-body { padding: 14px 12px; }
+  .uptime-value { gap: 6px; }
+  .uptime-value > .mono { font-size: 34px; }
+  .uptime-value > span:not(.mono) { margin-right: 0; }
+  .services-table th:nth-child(1) { width: 43%; }
+  .services-table th:nth-child(2) { width: 30%; }
+  .services-table th:nth-child(3) { width: 27%; }
+  .services-table td .status-label { padding: 2px 4px; }
+  .expected-stop { margin-left: 0; display: block; }
+}
