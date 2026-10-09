@@ -6,6 +6,9 @@ import { checkConfig, readYaml } from '../../tools/monitoring/check-config';
 const original = readYaml('infra/monitoring/compose.yaml');
 const prometheus = readYaml('infra/monitoring/prometheus.yml');
 const lock = JSON.parse(readFileSync('infra/monitoring/images.lock.json', 'utf8'));
+type MountCompose = {
+  services: Record<string, { volumes: { source: string; read_only?: boolean; bind: { propagation?: string } }[] }>;
+};
 
 describe('監視基盤の配備前安全検査', () => {
   it('バージョン固定・内部通信・読み取り専用・保持設定を満たす', () => {
@@ -22,11 +25,32 @@ describe('監視基盤の配備前安全検査', () => {
     expect(checkConfig(compose, prometheus, lock).length).toBeGreaterThan(0);
   });
   it('書き込み可能なホストマウントと固定データパスを拒否', () => {
-    const compose = structuredClone(original) as { services: Record<string, { volumes: { source: string; read_only?: boolean }[] }> };
+    const compose = structuredClone(original) as MountCompose;
     compose.services['node-exporter']!.volumes[0]!.read_only = false;
-    expect(checkConfig(compose, prometheus, lock)).toContain('Node Exporter: ホストマウントは所定の読み取り専用パスに限定');
+    expect(checkConfig(compose, prometheus, lock)).toContain('Node Exporter: ホストマウントは所定の読み取り専用パス・伝播モードに限定');
     compose.services.prometheus!.volumes[1]!.source = '/mnt/md0/metrics';
     expect(checkConfig(compose, prometheus, lock).length).toBeGreaterThan(1);
+  });
+  it.each([
+    [0, 'rslave'], [0, 'rshared'], [0, undefined],
+    [1, 'rslave'], [1, 'rshared'], [1, undefined],
+    [2, 'rprivate'], [2, 'rshared'], [2, undefined],
+  ])('ホストマウント %i の不正な伝播モード %s を拒否', (index, propagation) => {
+    const compose = structuredClone(original) as MountCompose;
+    compose.services['node-exporter']!.volumes[index]!.bind.propagation = propagation;
+    expect(checkConfig(compose, prometheus, lock).length).toBeGreaterThan(0);
+  });
+  it.each([0, 1, 2])('ホストマウント %i の読み取り専用解除・省略を拒否', (index) => {
+    for (const readOnly of [false, undefined]) {
+      const compose = structuredClone(original) as MountCompose;
+      compose.services['node-exporter']!.volumes[index]!.read_only = readOnly;
+      expect(checkConfig(compose, prometheus, lock)).toContain('Node Exporter: ホストマウントは所定の読み取り専用パス・伝播モードに限定');
+    }
+  });
+  it.each([0, 1])('Prometheus マウント %i への rslave の適用を拒否', (index) => {
+    const compose = structuredClone(original) as MountCompose;
+    compose.services.prometheus!.volumes[index]!.bind.propagation = 'rslave';
+    expect(checkConfig(compose, prometheus, lock)).toContain('Prometheus: マウント先・読み取り権限・必須データパスを確認');
   });
   it('外部収集と収集間隔の変更を拒否', () => {
     const config = structuredClone(prometheus) as { global: { scrape_interval: string }; scrape_configs: { static_configs: { targets: string[] }[] }[] };

@@ -13,7 +13,7 @@ const imageLock = z.object({
 }).strict();
 const mount = z.object({
   type: z.literal('bind'), source: z.string(), target: z.string(), read_only: z.boolean().optional(),
-  bind: z.object({ create_host_path: z.literal(false), propagation: z.literal('rprivate').optional() }).strict(),
+  bind: z.object({ create_host_path: z.literal(false), propagation: z.enum(['rprivate', 'rslave']).optional() }).strict(),
 }).strict();
 const service = z.object({
   image: z.string(), platform: z.literal('linux/amd64'), user: z.literal('65534:65534'),
@@ -72,7 +72,8 @@ export function checkConfig(compose: unknown, prometheus: unknown, lock: unknown
   must(prom.volumes.length === 2 && prom.volumes[0]?.source === './prometheus.yml'
     && prom.volumes[0]?.target === '/etc/prometheus/prometheus.yml' && prom.volumes[0]?.read_only === true
     && prom.volumes[1]?.source === '${TCR_PROMETHEUS_DATA_DIR:?OS用NVMe上の専用ディレクトリを確認して指定してください}'
-    && prom.volumes[1]?.target === '/prometheus' && !prom.volumes[1]?.read_only,
+    && prom.volumes[1]?.target === '/prometheus' && !prom.volumes[1]?.read_only
+    && prom.volumes.every((volume) => volume.bind.propagation !== 'rslave'),
   'Prometheus: マウント先・読み取り権限・必須データパスを確認');
   const node = c.data.services['node-exporter'];
   const required = ['--web.listen-address=0.0.0.0:9100', '--web.disable-exporter-metrics',
@@ -82,11 +83,16 @@ export function checkConfig(compose: unknown, prometheus: unknown, lock: unknown
     && node.command.some((flag) => flag.startsWith('--collector.filesystem.mount-points-exclude=^/') && flag.endsWith('($$|/)'))
     && node.command.some((flag) => flag.startsWith('--collector.filesystem.fs-types-exclude=^(') && flag.endsWith(')$$')),
   'Node Exporter: collector・パス・除外式を確認');
-  must(node.volumes.length === 3 && ['/proc', '/sys', '/'].every((source, index) => {
+  const hostMounts = [
+    { source: '/proc', target: '/host/proc', propagation: 'rprivate' },
+    { source: '/sys', target: '/host/sys', propagation: 'rprivate' },
+    { source: '/', target: '/host/root', propagation: 'rslave' },
+  ];
+  must(node.volumes.length === hostMounts.length && hostMounts.every((expected, index) => {
     const volume = node.volumes[index];
-    return volume?.source === source && volume.target === ['/host/proc', '/host/sys', '/host/root'][index]
-      && volume.read_only === true && volume.bind.propagation === 'rprivate';
-  }), 'Node Exporter: ホストマウントは所定の読み取り専用パスに限定');
+    return volume?.source === expected.source && volume.target === expected.target
+      && volume.read_only === true && volume.bind.propagation === expected.propagation;
+  }), 'Node Exporter: ホストマウントは所定の読み取り専用パス・伝播モードに限定');
   const jobs = p.data.scrape_configs;
   must(jobs[0].job_name === 'tadami-node' && jobs[0].static_configs[0].targets[0] === 'node-exporter:9100'
     && jobs[0].static_configs[0].labels.instance === 'tadami'

@@ -91,7 +91,7 @@ services:
         read_only: true
         bind:
           create_host_path: false
-          propagation: rprivate
+          propagation: rslave
     networks: [monitoring]
     logging:
       driver: json-file

@@ -1,12 +1,12 @@
 # β0.2 監視基盤：配備前の構成案と運用手順
 
-2026-10-08 作成、10-09 検証追記。**今回は作業用 PC でのファイル作成・静的検査まで。以下の実機コマンドは実行していない。** tadami への SSH、コンテナ起動、UFW・既存サービス・RAID の変更は行わない。実機での配備は別途指示を受けて行う。
+2026-10-08 作成、10-09 検証・初回起動時のマウントエラー修正を追記。**本修正は作業用 PC でのファイル変更・静的検査まで。以下の実機コマンドは実行していない。** tadami への SSH、コンテナ起動、UFW・既存サービス・RAID の変更は行わない。実機での配備は別途指示を受けて行う。
 
 ## 1. 確認済み情報と未確認情報
 
 ユーザーから確認済みとして提示された構成：Ubuntu 24.04.5 LTS、Intel Core i5-7500 / 4 論理 CPU、メモリ約 31 GiB、OS 用 NVMe 約 232.9 GB、RAID1 `/dev/md0` 約 931.39 GiB / clean / 2 台中 2 台正常 / **未マウント**。Docker / Compose 導入済み、UFW 有効。既存の SSH・WireGuard・Eternal Terminal を維持する。
 
-実機の Docker Engine / Compose / Linux カーネルのバージョン、rootless・userns-remap・hidepid・AppArmor の設定、Docker の既存ネットワーク・ルーティング、NVMe のパーティション・実ファイルシステム・空き容量・データ用パスは未確認。上記の公称容量を監視値としてハードコードしない。
+初回起動エラーの報告時に、ユーザーから **Docker Engine 29.8.2、Linux Kernel 6.8** が提示された（Ubuntu 24.04.5 LTS）。実機への接続による確認はしていない。Compose のバージョン、rootless・userns-remap・hidepid・AppArmor の設定、Docker の既存ネットワーク・ルーティング、NVMe のパーティション・実ファイルシステム・空き容量・データ用パスは未確認。上記の公称容量を監視値としてハードコードしない。
 
 ## 2. 配置とバージョン
 
@@ -61,17 +61,31 @@ Prometheus の認証・TLS はこの閉じた収集ネットワークには追�
 
 Node Exporter に必要なホスト bind mount：
 
-| ホスト → コンテナ | 読み取る理由 | リスク |
-| --- | --- | --- |
-| `/proc` → `/host/proc` : ro | CPU・メモリ・起動時刻・diskstats・mdstat・PID 1 の mountinfo | 他プロセスやホスト状態の情報が見える |
-| `/sys` → `/host/sys` : ro | md RAID の degraded 状態など | ハードウェア情報が見える |
-| `/` → `/host/root` : ro | ホストのマウント先で `statfs` し容量を取得 | 非 root でも読めるホストファイルがコンテナから見える。ro は機密性の保護ではない |
+| ホスト → コンテナ | bind propagation | 読み取る理由 | リスク |
+| --- | --- | --- | --- |
+| `/proc` → `/host/proc` : ro | `rprivate` | CPU・メモリ・起動時刻・diskstats・mdstat・PID 1 の mountinfo | 他プロセスやホスト状態の情報が見える |
+| `/sys` → `/host/sys` : ro | `rprivate` | md RAID の degraded 状態など | ハードウェア情報が見える |
+| `/` → `/host/root` : ro | `rslave` | ホストのマウント先で `statfs` し容量を取得 | 非 root でも読めるホストファイルがコンテナから見える。ro は機密性の保護ではない |
 
 ro は Unix socket 経由の操作まで防ぐ仕組みではない。ルート配下の runtime socket などが UID 65534 から利用できないことも導入時に確認する。ホストファイルを広く見せるリスクを許容できない場合は、必要なマウント先を実機調査後に絞った別案をレビューする。
 
 ホスト `/proc/1/mountinfo` を bind 経由で読むため、選択した collector では `pid: host` を前提にしない。hidepid 等で読めなければ導入検証を中止し、欠損を正常と扱わない。権限を安易に追加しない。[filesystem collector の実装](https://github.com/prometheus/node_exporter/blob/v1.12.1/collector/filesystem_linux.go)
 
-bind propagation は `rprivate` とし、将来追加されたマウントを自動伝播させない。マウント変更時は再レビューと Node Exporter の再作成が必要。今回 RAID のマウントを作成することはない。入れ子のマウントも ro になることは Docker / kernel に依存するため、**kernel 5.12 以上かつ実際の全 `/host` 配下が ro であること**を導入条件にする。ルートの ro 表示だけで子マウントの安全性を判定しない。[Docker bind mounts](https://docs.docker.com/engine/storage/bind-mounts/)
+### 4.1 初回起動時のマウントエラーと修正
+
+ユーザーから報告されたエラー：
+
+```text
+invalid mount config: must use either propagation mode "rslave" or "rshared" when mount source is within the daemon root, daemon root: "/var/lib/docker", bind mount source: "/", propagation: "rprivate"
+```
+
+`source: /` は Docker のデータルート `/var/lib/docker` を包含する。Engine は bind 元がデータルート内にある場合だけでなく、データルートを包含する場合も検査し、明示された `rprivate` を拒否する。これは Docker 管理下のマウントへの private な参照がコンテナに残り、デーモンのマウント削除を妨げることを防ぐための制約。[Docker Engine（Moby）の検証実装](https://github.com/moby/moby/blob/master/daemon/volumes_linux.go)
+
+変更は Node Exporter の `/` → `/host/root` の `bind.propagation` を `rprivate` から **`rslave`** にする一点。`rslave` は子マウントを含めてホストからコンテナへの一方向に伝播し、コンテナからホストには伝播しない。読み取り権限とは別の設定なので、マウントの `read_only: true` は維持する。非 root の UID:GID `65534:65534`、読み取り専用 rootfs、`cap_drop: ALL`、`no-new-privileges`、専用内部 Docker ネットワークも維持する。[Docker bind propagation](https://docs.docker.com/engine/storage/bind-mounts/#configure-bind-propagation)、[Compose volumes の long syntax](https://docs.docker.com/reference/compose-file/services/#volumes)
+
+`/proc`・`/sys` はこのデータルートを包含せず、今回の拒否条件に該当しない。collector が読むホスト情報のためにマウント自体は必要だが、このエラーの解消に伝播モードの変更は不要なので **`rprivate` のまま**にする。静的安全検査は `/host/root` だけに `rslave` を要求し、`/proc`・`/sys` および Prometheus への `rslave` の適用、`rshared`、Node Exporter の伝播モード省略を拒否する。
+
+入れ子のマウントも ro になることは Docker / kernel に依存するため、**kernel 5.12 以上かつ実際の全 `/host` 配下が ro であること**を導入条件にする。提示された Kernel 6.8 はバージョン条件を満たすが、ルートの ro 表示だけで子マウントの安全性を判定しない。`rslave` により将来のホスト側マウントも見えるため、ホストのマウント構成変更後にも第 9 節の実マウント検査を再実施する。今回 RAID のマウントを作成することはない。[Docker recursive mounts](https://docs.docker.com/engine/storage/bind-mounts/#recursive-mounts)
 
 ## 5. RAID1 の扱い
 
@@ -179,7 +193,20 @@ docker compose --env-file .env -f compose.yaml exec -T node-exporter \
 
 確認条件：targets は 2 件とも up、node の up=1、CPU idle 系列数=4、メモリは約 31 GiB、`node_time_seconds - node_boot_time_seconds` が実機稼働時間と整合、NVMe の実 FS の device / mountpoint / fstype が正しい、md0 の系列が前述の期待と整合。CPU `rate(...[60s])` は 15 秒収集を複数回待ってから確認する。FS collector 失敗・device_error・OOM・sample_limit 超過がないことも確認する。`up=1` だけで各 collector や既存アプリが正常とは判断しない。
 
-`/proc/self/mountinfo` の **全 `/host` 配下マウントの mount options が ro** であることを確認する（区切り `-` より前の options を見る。元 FS の superblock が rw でも bind の ro とは別）。rw があれば Node Exporter を停止して原因を調べる。
+読み取り専用と伝播モードを別々に確認する。以下も将来の承認済み導入後の手順であり、本修正では実行しない。
+
+```sh
+# 3 件の bind mount の Source / Destination / RW / Propagation を確認。
+TCR_NODE_CONTAINER_ID=$(docker compose --env-file .env -f compose.yaml ps -q node-exporter)
+docker inspect --format '{{json .Mounts}}' "$TCR_NODE_CONTAINER_ID"
+# 実際の子マウントも確認。第 5 フィールドがマウント先、第 6 が mount options。
+docker compose --env-file .env -f compose.yaml exec -T node-exporter \
+  cat /proc/self/mountinfo | awk '$5 ~ /^\/host\// { print $5, $6 }'
+```
+
+`docker inspect` の期待値は、`/` → `/host/root` が **`RW: false`、`Propagation: rslave`**、`/proc` → `/host/proc` と `/sys` → `/host/sys` が **`RW: false`、`Propagation: rprivate`**。これは各 bind の設定確認であり、子マウントまでの保証ではない。[Docker の読み取り専用 bind mount 確認方法](https://docs.docker.com/engine/storage/bind-mounts/#use-a-read-only-bind-mount)
+
+`/proc/self/mountinfo` の **全 `/host` 配下マウントの mount options が ro** であることを確認する（区切り `-` より前の第 6 フィールドを見て、カンマ区切りに `ro` が含まれ、`rw` がないことを確認。元 FS の superblock が rw でも bind の ro とは別）。`/host/proc`・`/host/sys`・`/host/root` の 3 件が存在し、子マウントも含めて確認する。rw があれば Node Exporter を停止して原因を調べる。書き込みを試す `touch` 等は検査に使わない。
 
 コンテナ ID を `docker compose … ps -q` で得て `docker inspect` し、PortBindings が空、Privileged=false、CapDrop=ALL、ReadonlyRootfs=true、指定ネットワークだけであることを確認。`docker network inspect tadami-monitoring_monitoring` は Internal=true であることを確認する。ホスト `ss` だけでは Docker の NAT 公開を検出しきれない。導入検証では LAN / 外部から tadami の 9090/9100 が到達不能なこと、既存管理接続が維持されることも確認する。異常時に UFW を無効化して対処しない。
 
@@ -217,7 +244,8 @@ docker compose --env-file .env -f compose.yaml start
 
 ## 11. 今回の検査結果と配備の条件
 
-- 静的安全検査：成功。危険な変更を注入する 14 ケースのテストを追加。
+- 静的安全検査：成功。監視基盤のテストは本修正で 14 ケース増え、計 28 ケースが成功。旧ルート伝播設定、他マウントへの `rslave` 適用、伝播モード省略、読み取り専用の解除・省略を拒否する。
+- 本修正の型チェック・lint：成功。全テスト：8 ファイル / 129 ケース成功（HTTP テストのローカル待受がサンドボックスで拒否されたため、許可後に制限外で再実行）。tadami への接続・コンテナ操作は未実施。
 - Compose 2.40.3 の `config --quiet`：成功。未設定の保存先では期待どおりエラー。
 - promtool 3.13.4 の `check config`：成功。
 - イメージ：公式レジストリの index / linux-amd64 digest を取得して固定。pull・実行は未実施。
