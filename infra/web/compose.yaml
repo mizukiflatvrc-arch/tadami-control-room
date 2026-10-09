@@ -1,0 +1,87 @@
+name: tadami-web
+
+services:
+  web:
+    image: tadami-control-room-web:${TCR_RELEASE:?変更単位の固定リリース識別子を指定してください}
+    build:
+      context: ../..
+      dockerfile: infra/web/Dockerfile
+      target: web
+    platform: linux/amd64
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    restart: unless-stopped
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.5
+    stop_grace_period: 10s
+    environment:
+      TCR_WEB_HOST: 0.0.0.0
+      TCR_WEB_PORT: "8080"
+    ports:
+      - "127.0.0.1:18080:8080"
+    networks: [frontend]
+    depends_on:
+      monitoring-api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  monitoring-api:
+    image: tadami-control-room-api:${TCR_RELEASE:?変更単位の固定リリース識別子を指定してください}
+    build:
+      context: ../..
+      dockerfile: infra/web/Dockerfile
+      target: api
+    platform: linux/amd64
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    restart: unless-stopped
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 1.0
+    stop_grace_period: 10s
+    env_file:
+      - path: ./api.env
+        required: true
+    environment:
+      TCR_API_HOST: 0.0.0.0
+      TCR_API_PORT: "8787"
+    networks: [frontend, monitoring]
+    healthcheck:
+      # Local liveness only; no extra Prometheus queries or public health endpoint.
+      test: [CMD, node, -e, "const s=require('node:net').connect(8787,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  frontend:
+    driver: bridge
+    internal: true
+    attachable: false
+    enable_ipv6: false
+  monitoring:
+    external: true
+    name: tadami-monitoring_monitoring

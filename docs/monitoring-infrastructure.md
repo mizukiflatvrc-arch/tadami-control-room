@@ -1,12 +1,20 @@
 # β0.2 監視基盤：配備前の構成案と運用手順
 
-2026-10-08 作成、10-09 子マウントの安全性調査・構成候補を追記。**2c6d87d の `/` 全体の ro,rslave 構成は実機で安全要件を満たさなかった。以下の代替構成は実機未検証であり、配備条件を満たすまで使用しない。** 本修正は作業用 PC でのファイル変更・静的検査まで。以下の実機コマンドは実行していない。tadami への SSH、コンテナ起動・停止、マウント操作、Docker デーモン設定、UFW・WireGuard の変更は行わない。実機での配備・検証は別途指示を受けて行う。
+2026-10-08 作成、10-09 子マウント対策と実機確認のユーザー報告を反映。**現行の probe を用いた Compose は tadami に配備済みで、読み取り専用の詳細マウント監査 PASS（ユーザー報告）。** 過去の `2c6d87d` の `/` 全体の ro,rslave 構成では安全要件を満たさなかった経緯を後半に保持する。今回の 01a は himekami での Web / API 構成実装のみ。実機への SSH、既存コンテナやネットワークの操作は行っていない。Web / API の手順は [本番 Web 配備手順](production-web.md)。
 
 ## 1. 確認済み情報と未確認情報
 
-ユーザーから確認済みとして提示された構成：Ubuntu 24.04.5 LTS、Intel Core i5-7500 / 4 論理 CPU、メモリ約 31 GiB、OS 用 NVMe 約 232.9 GB、RAID1 `/dev/md0` 約 931.39 GiB / clean / 2 台中 2 台正常 / **未マウント**。Docker / Compose 導入済み、UFW 有効。既存の SSH・WireGuard・Eternal Terminal を維持する。
+以下はユーザーから提示された実機確認結果であり、今回の作業で再計測していない。
 
-初回起動エラーの報告時に、ユーザーから **Docker Engine 29.8.2、Linux Kernel 6.8** が提示された（Ubuntu 24.04.5 LTS）。実機への接続による確認はしていない。Compose のバージョン、rootless・userns-remap・hidepid・AppArmor の設定、Docker の既存ネットワーク・ルーティング、NVMe のパーティション・実ファイルシステム・空き容量・データ用パスは未確認。上記の公称容量を監視値としてハードコードしない。
+- Ubuntu Server 24.04.5 LTS、Core i5-7500、4 論理 CPU、メモリ約31.05GiB。
+- Docker Engine 29.8.2 / Compose 5.6.0。Prometheus 3.13.4 / Node Exporter 1.12.1 は稼働中。
+- `tadami-monitoring_monitoring` は internal、9090 / 9100 はホスト非公開。WireGuard 経由の直接接続不可。
+- `up{job="tadami-node",instance="tadami"}=1`、7 collector 成功、filesystem device error=0。
+- OS root FS は `/dev/nvme0n1p2` / `/` / ext4。NVMe の total / available はホストと一致。
+- RAID1 `/dev/md0` は active 2/2、failed=0、degraded=0、未マウント。
+- 一次マウント検査 RW=0、詳細マウント監査 PASS。
+
+既存 SSH・WireGuard・Eternal Terminal・UFW を維持する。公称値を API 観測値としてハードコードしない。Web / API の内部 DNS、API→Prometheus の実接続、localhost18080転送、コンテナ制限下の挙動は未検証。rootless / userns / AppArmor、daemon のルーティング詳細、実時間の長期稼働は Web 配備前の確認事項。
 
 ## 2. 配置とバージョン
 
@@ -20,7 +28,7 @@
 | `tools/monitoring/host-mount-policy.ts` | ホストマウントの許可リストと固定 probe パス |
 | `tools/monitoring/check-host-mounts.ts` | 保存済み inspect / mountinfo の読み取り専用・子マウント検査。実機への接続・Docker 操作なし |
 
-2026-10-08 に [公式ダウンロード一覧](https://prometheus.io/download/) を確認。最新通常版 3.15.0 に対し、今回は保守系列の **Prometheus 3.13.4 LTS** を選択。Node Exporter は **1.12.1**。タグだけでなく `@sha256:…` でマルチプラットフォームの index を固定し、`platform: linux/amd64` を指定する。ダイジェストは Quay の公開マニフェスト API で確認した。コンテナイメージの pull・実行はしていない。
+2026-10-08 に [公式ダウンロード一覧](https://prometheus.io/download/) を確認。最新通常版 3.15.0 に対し、今回は保守系列の **Prometheus 3.13.4 LTS** を選択。Node Exporter は **1.12.1**。タグだけでなく `@sha256:…` でマルチプラットフォームの index を固定し、`platform: linux/amd64` を指定する。ダイジェストは Quay の公開マニフェスト API で確認した。当初の構成作成時にはイメージの pull・実行をしていなかった。現在はユーザー報告により実機配備済み。
 
 - [Prometheus 3.13.4 リリース](https://github.com/prometheus/prometheus/releases/tag/v3.13.4)
 - [Node Exporter 1.12.1 リリース](https://github.com/prometheus/node_exporter/releases/tag/v1.12.1)
@@ -40,11 +48,11 @@
 
 `0.0.0.0:9090` / `:9100` はそれぞれの **コンテナのネットワーク名前空間内** の待受。ホスト LAN / インターネットへ公開しない。`network_mode: host`、固定ホスト IP、9090/9100 のポート転送、外部収集先は設定しない。イメージの `EXPOSE` メタデータだけではホスト公開にはならない。
 
-内部 bridge は外部ネットワークへの経路を分離する。ただしホスト管理者や Docker 操作権限を持つユーザーに対する認証境界ではなく、ホストから bridge IP に到達できる場合もある。`attachable: false` も Docker 管理者の接続操作を禁止するものではない。内部参加者を信用できることが前提で、他のサービスは接続しない。[Docker bridge network](https://docs.docker.com/engine/network/drivers/bridge/)
+内部 bridge は外部ネットワークへの経路を分離する。ただしホスト管理者や Docker 操作権限を持つユーザーに対する認証境界ではなく、ホストから bridge IP に到達できる場合もある。`attachable: false` も Docker 管理者の接続操作を禁止するものではない。内部参加者を信用できることが前提。01a では新規 Web プロジェクトの API だけを既存ネットワークへ追加接続する構成を準備し、Web 配信・無関係なサービスは接続しない。[Docker bridge network](https://docs.docker.com/engine/network/drivers/bridge/)
 
-Docker の公開ポートは UFW の期待する経路を通らないことがあるため、UFW のみを防御にしない。既存 daemon の firewall 無効化・直接ルーティング・ネットワークサブネットの競合（特に WireGuard）を導入前に確認する。将来 `up` すると Docker が専用 bridge とその分離ルールを作成する。UFW や既存 daemon の設定をこの手順で書き換えない。既存接続に影響が出たら監視スタックだけを停止する。[Docker と firewall / UFW](https://docs.docker.com/engine/network/packet-filtering-firewalls/)
+Docker の公開ポートは UFW の期待する経路を通らないことがあるため、UFW のみを防御にしない。既存 daemon の firewall 無効化・直接ルーティング・ネットワークサブネットの競合（特に WireGuard）を導入前に確認する。監視基盤の初回 `up` 時に Docker が専用 bridge と分離ルールを作成する。既存配備済みネットワークを 01a で再作成しない。UFW や既存 daemon の設定をこの手順で書き換えない。既存接続に影響が出たら監視スタックだけを停止する。[Docker と firewall / UFW](https://docs.docker.com/engine/network/packet-filtering-firewalls/)
 
-Prometheus の認証・TLS はこの閉じた収集ネットワークには追加していない。管理 API、HTTP reload、remote-write receiver を有効化しない。将来の CONTROL ROOM API は配備方式を別途決め、内部の `http://prometheus:9090/` に接続する案とする。現在の作業用 PC の API からこの名前は解決できない。接続のためにポートを公開したり、通信先をブラウザーに埋め込んだりしない。Grafana、サービス監視、通知先は今回の Compose に含めない。
+Prometheus の認証・TLS はこの閉じた収集ネットワークには追加していない。管理 API、HTTP reload、remote-write receiver を有効化しない。01a の CONTROL ROOM API は別の Web Compose プロジェクトから内部の `http://prometheus:9090/` に接続する構成を実装した（接続未検証）。現在の作業用 PC の API からこの名前は解決できない。接続のためにポートを公開したり、通信先をブラウザーに埋め込んだりしない。Grafana、サービス監視、通知先は今回の Compose に含めない。
 
 ## 4. 収集対象と最小権限
 
@@ -85,15 +93,15 @@ ro は Unix socket 経由の操作まで防ぐ仕組みではない。probe に�
 
 `rslave` はホストからの新しい子マウントを伝播させる。runc の再帰属性設定は、その時点のマウントツリーへ `mount_setattr(..., AT_RECURSIVE, ...)` を実行するもので、後から来るマウントを常時 ro に変換する監視機構ではない。**検出された3件が後から伝播した可能性は実装と整合するが、採取時刻・runtime バージョン・初期状態がないため経路は断定しない。** 既定の recursive read-only のフォールバックの有無も未確認。いずれの場合も `/` 全体の ro,rslave を安全な構成として継続しない。[Docker propagation](https://docs.docker.com/engine/storage/bind-mounts/#configure-bind-propagation)、[runc の再帰属性設定](https://github.com/opencontainers/runc/blob/main/libcontainer/rootfs_linux.go#L1436)
 
-Compose では `bind.recursive` が利用できる。[公式 schema](https://github.com/compose-spec/compose-spec/blob/main/schema/compose-spec.json) と [Compose 2.40.3 の buildBindOption](https://github.com/docker/compose/blob/v2.40.3/pkg/compose/create.go#L1136) を確認した。`readonly` は Engine の `ReadOnlyForceRecursive=true`、`disabled` は `NonRecursive=true` に対応する。実機の Compose バージョンは未確認なので、展開結果にキーが残り、起動後の HostConfig に変換された値が残ることも必須条件。未知のキーを削って起動しない。
+Compose では `bind.recursive` が利用できる。[公式 schema](https://github.com/compose-spec/compose-spec/blob/main/schema/compose-spec.json) と [Compose 2.40.3 の buildBindOption](https://github.com/docker/compose/blob/v2.40.3/pkg/compose/create.go#L1136) を確認した。`readonly` は Engine の `ReadOnlyForceRecursive=true`、`disabled` は `NonRecursive=true` に対応する。実機の Compose はユーザー報告で 5.6.0。更新・再配備時は、展開結果にキーが残り、起動後の HostConfig に変換された値が残ることも必須条件。未知のキーを削って起動しない。
 
-### 4.2 採用候補：ルート FS 上の空ディレクトリを使う
+### 4.2 採用済み構成：ルート FS 上の空ディレクトリを使う
 
 Node Exporter 1.12.1 の filesystem collector はホスト `/proc/1/mountinfo` からラベルを取り、`--path.rootfs` と mountpoint を結合したパスで `statfs` を実行する。このため `/` の容量だけなら、ホスト `/` と同じファイルシステム上の専用ディレクトリを `/host/root` に bind して取得できる。通常のサブディレクトリへの `statfs` はファイルシステム全体の容量を返す。ラベルを変更せず、既存 API の device / mountpoint / fstype の固定照合も維持する。ただし同一 FS・サブボリューム・クォータ等による差がないことを実測する。[1.12.1 の filesystem collector](https://github.com/prometheus/node_exporter/blob/v1.12.1/collector/filesystem_linux.go#L101)
 
 候補パスを固定し、`create_host_path: false` とする。存在しないディレクトリは自動作成されない。probe は root 所有、非 root から探索可能（例：0755）、空、socket・symlink・子マウントなしとし、親ディレクトリも信頼できる所有者・権限にする。Docker の実際の data-root / exec-root / containerd 管理領域と probe が包含関係にないことを確認する。`/var` 等が別 FS ならこの固定パスは使えず、`/` と同じ FS 上の別の候補を構成・許可リストごとレビューする。`/` や Docker 管理領域への置換は拒否する。
 
-probe は `read_only: true` + `rprivate` + `recursive: disabled`。filesystem の mountpoint include は厳密に `^/$`（Compose 原文は `^/$$`）とし、probe がないパスで誤った FS の `statfs` をしない。CPU・メモリ・NVMe diskstats・稼働時間・未マウント RAID1 は従来の7 collector で維持する。proc は実装が読む5ファイルだけを ro・非再帰 bind し、ファイル内容をコピーして固定しない。Node Exporter 1.12.1 の依存 procfs 0.21.1 は通常のディレクトリにも初期化でき、実 procfs 以外なら `isReal=false` として扱い、必要なパスを読む。今回使う collector の参照先を実装から確認したが、個別 proc ファイルの bind の可読性・更新と7 collector の動作は実機で検証する。[procfs の初期化](https://github.com/prometheus/procfs/blob/v0.21.1/fs.go)、[ファイルシステム判定](https://github.com/prometheus/procfs/blob/v0.21.1/fs_statfs_type.go)、[CPU collector](https://github.com/prometheus/node_exporter/blob/v1.12.1/collector/cpu_linux.go)
+probe は `read_only: true` + `rprivate` + `recursive: disabled`。filesystem の mountpoint include は厳密に `^/$`（Compose 原文は `^/$$`）とし、probe がないパスで誤った FS の `statfs` をしない。CPU・メモリ・NVMe diskstats・稼働時間・未マウント RAID1 は従来の7 collector で維持する。proc は実装が読む5ファイルだけを ro・非再帰 bind し、ファイル内容をコピーして固定しない。Node Exporter 1.12.1 の依存 procfs 0.21.1 は通常のディレクトリにも初期化でき、実 procfs 以外なら `isReal=false` として扱い、必要なパスを読む。今回使う collector の参照先を実装から確認したが、個別 proc ファイルの bind と7 collector の成功は実機確認済み（ユーザー報告）。更新後は再検証する。[procfs の初期化](https://github.com/prometheus/procfs/blob/v0.21.1/fs.go)、[ファイルシステム判定](https://github.com/prometheus/procfs/blob/v0.21.1/fs_statfs_type.go)、[CPU collector](https://github.com/prometheus/node_exporter/blob/v1.12.1/collector/cpu_linux.go)
 
 `/sys` は CPU と RAID の参照に残し、`rprivate` に **`recursive: readonly`** を追加する。全ホスト bind は ro、非 root、capabilities 削除、no-new-privileges、内部ネットワーク、非公開ポートを維持する。`--collector.cpu.info` や別 collector の追加は、proc 許可リストとの対応を再レビューする。
 
@@ -103,7 +111,7 @@ probe は `read_only: true` + `rprivate` + `recursive: disabled`。filesystem �
 
 | 案 | Prometheus への経路 | 安全性・制約 |
 | --- | --- | --- |
-| Compose + 空の probe（今回の候補） | 既存の内部 bridge で `node-exporter:9100` | ホスト TCP ポート不要。ホスト `/` と同一 FS の probe と runtime の強制 RRO 対応が必要。別 FS 容量は別設計 |
+| Compose + 空の probe（実機配備済み・ユーザー報告） | 既存の内部 bridge で `node-exporter:9100` | ホスト TCP ポート不要。ホスト `/` と同一 FS の probe と runtime の強制 RRO 対応が必要。別 FS 容量は別設計 |
 | systemd + ホスト localhost TCP | コンテナからホスト localhost へは直接到達しない | `127.0.0.1:9100` だけでは現構成の scrape ができない。解決に host network や `0.0.0.0` を使わない。採用しない |
 | systemd + 専用 Unix socket + 内部 proxy | ホストの専用 metrics socket → proxy コンテナ → 内部 bridge の Prometheus | ホスト TCP 待受不要。Docker socket は使わない。systemd の socket 権限、proxy の `/metrics` 限定転送、UID/GID、再起動・socket 再生成、scrape 制限を設計・検証する必要がある |
 
@@ -115,7 +123,7 @@ Node Exporter 1.12.1 が使う exporter-toolkit 0.17.1 は systemd socket activa
 
 1.12.1 の mdadm collector は `/proc/mdstat` と sysfs を読む。md デバイスがアクティブなら、FS が未マウントでも取得可能な設計。RAID のフォーマット、アセンブル、修復、同期開始、マウント、`mdadm` コマンドの実行は不要。[mdadm collector の実装](https://github.com/prometheus/node_exporter/blob/v1.12.1/collector/mdadm_linux.go)
 
-導入後の確認候補（`device="md0"` は実出力のラベルを確認する）：
+再確認用クエリー（RAID はユーザー報告で active 2/2、failed=0、degraded=0。`device="md0"` のラベルは再確認する）：
 
 ```promql
 node_md_disks_required{job="tadami-node",instance="tadami",device="md0"}
@@ -163,7 +171,7 @@ promtool check config infra/monitoring/prometheus.yml
 
 ## 8. 実機での導入前確認（未実行）
 
-以下は将来の導入担当者向け。今回は実行しない。
+以下は当初の導入・今後の再配備担当者向け。ユーザーによる配備・監査は完了しているが、今回これらの実機コマンドは実行しない。
 
 ```sh
 uname -r
@@ -182,7 +190,7 @@ docker network ls
 
 データ候補パスの親まで `findmnt -T` で確認し、最終的な専用ディレクトリ作成後も再確認する。LVM / 暗号化の場合は親デバイスまで追う。kernel、rootless / userns-remap、UID/GID マッピング、`/proc/1/mountinfo` の可読性、NVMe の残容量、既存ネットワークとのアドレス重複を記録する。不一致なら配備せず構成案を見直す。既存 SSH / WireGuard / Eternal Terminal の接続確認を前後で行う。取得した実機ログは秘密情報を点検し、無加工で Git に追加しない。
 
-probe のために追加で確認する条件（今回は未実行）：
+probe の再配備時に維持・再確認する条件（ユーザー報告で監査済み。今回の再実行なし）：
 
 - ホスト `/` が監視対象の OS 用 NVMe 上であること。`findmnt -T /` と `lsblk` で辿る。NVMe の公称容量と FS 容量を混同しない。
 - probe は root 所有の新しい空ディレクトリで、親にも他ユーザーの書き込み権限・ACL がなく、全経路に symlink がないこと。Prometheus データディレクトリは流用しない。

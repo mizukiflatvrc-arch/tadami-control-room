@@ -13,6 +13,7 @@ export type ServerConfig = {
   prometheusUrl: string;
   authorization?: string;
   port: number;
+  listenHost: '127.0.0.1' | '0.0.0.0';
   profile: 'node-exporter-v1';
   host: { id: string; name: string; osLabel: string };
   job: string;
@@ -41,6 +42,7 @@ export function readConfig(env: NodeJS.ProcessEnv): ServerConfig {
     TCR_PROMETHEUS_INSTANCE: text,
     TCR_CPU_RATE_WINDOW_SECONDS: z.coerce.number().int().min(30).max(3600),
     TCR_API_PORT: z.coerce.number().int().min(1024).max(65535).default(8787),
+    TCR_API_HOST: z.enum(['127.0.0.1', '0.0.0.0']).default('127.0.0.1'),
     TCR_FILESYSTEMS_JSON: z.array(filesystem).min(1).max(32),
     TCR_SERVICES_JSON: z.array(service).max(64),
     TCR_PROMETHEUS_AUTH: z.enum(['none', 'bearer', 'basic']).default('none'),
@@ -74,7 +76,7 @@ export function readConfig(env: NodeJS.ProcessEnv): ServerConfig {
   }
   return {
     prometheusUrl: data.TCR_PROMETHEUS_URL.replace(/\/+$/, '') + '/',
-    authorization, port: data.TCR_API_PORT, profile: data.TCR_METRIC_PROFILE,
+    authorization, port: data.TCR_API_PORT, listenHost: data.TCR_API_HOST, profile: data.TCR_METRIC_PROFILE,
     host: { id: data.TCR_HOST_ID, name: data.TCR_HOST_NAME, osLabel: data.TCR_OS_LABEL },
     job: data.TCR_PROMETHEUS_JOB, instance: data.TCR_PROMETHEUS_INSTANCE,
     cpuRateWindowSeconds: data.TCR_CPU_RATE_WINDOW_SECONDS,

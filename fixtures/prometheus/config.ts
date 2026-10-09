@@ -2,7 +2,7 @@ import type { ServerConfig } from '../../server/config';
 
 /** Fictional configuration. This is never imported by the production backend entry. */
 export const fixtureConfig: ServerConfig = {
-  prometheusUrl: 'http://127.0.0.1:0/', port: 8787, profile: 'node-exporter-v1',
+  prometheusUrl: 'http://127.0.0.1:0/', port: 8787, listenHost: '127.0.0.1', profile: 'node-exporter-v1',
   host: { id: 'fixture-host', name: 'API 検証ホスト', osLabel: 'OS 未確認（フィクスチャ）' },
   job: 'fixture-node', instance: 'example.invalid:9100', cpuRateWindowSeconds: 60,
   filesystems: [

@@ -1,6 +1,6 @@
 # ディレクトリ構造
 
-> β0.2 更新：モックを維持し、作業用 PC 向けの読み取り専用 API / ApiProvider を追加。詳細は [API 設計](api-design.md)。`infra/monitoring/` に Prometheus / Node Exporter の配備案を追加し、[監視基盤の運用手順](monitoring-infrastructure.md) に安全確認・停止復旧を整理した。実機への接続・コンテナ起動・本番配備は未実施。以下の初期計画・β0.1 の記述は経緯として保持する。
+> β0.3 / 01a 更新：Prometheus / Node Exporter は tadami で実機配備・監査済み（ユーザー報告）。Web / API の本番コンテナ構成と API 固定ビルドを himekami で実装。Web の Docker 起動・実機接続は未実施。[本番配備手順](production-web.md)、[検証記録](verification-beta-0.3-01a.md) を参照。以下の初期設計・β0.1/β0.2 の記述は経緯として保持する。
 
 > β0.1 実装時の補足：以下は初期の配置案。モック版ではこの構造に沿って実装し、取得タイムアウト処理を `src/data/request-snapshot.ts` に追加した。実データ用 `server/`・`src/data/api/` はまだ作成していない。検証記録を `docs/verification.md` に追加した。
 
@@ -118,3 +118,7 @@ Prometheus、Grafana、systemd、リバースプロキシなどの実機設定�
 `server/app.ts` が API の固定経路を担当し、`server/config.ts` と `server/prometheus/{client,queries,mapper}.ts` を分離した。契約は `src/domain/` を共有。`fixtures/prometheus/` と `tests/server/` に応答・結合テストを配置し、`tools/dev-fixture.ts` が PC 内の検証起動を担当する。
 
 `infra/monitoring/` は `compose.yaml`、`prometheus.yml`、`images.lock.json`、`.env.example` のみ。DB・実認証情報・既存サーバー設定は含めない。`tools/monitoring/check-config.ts` と `tests/server/infrastructure.test.ts` が静的安全検査を担当する。
+
+## β0.3 / 01a の追加配置
+
+`infra/web/` は監視基盤と別の Compose プロジェクト、Dockerfile、設定例。`server/web.ts` が静的配信と固定 proxy、`server/web-index.ts` が本番 entry。`vite.server.config.ts` が Node 向けビルドを担当し、`dist-web/` と `dist-server/` は Git 管理外。`tools/production/` と `tests/server/web*.test.ts`、`tests/e2e/production.spec.ts` が配備構成・成果物・HTTP・ブラウザーを検証する。

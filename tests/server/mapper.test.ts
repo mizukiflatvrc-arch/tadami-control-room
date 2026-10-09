@@ -30,6 +30,9 @@ describe('明示的なサーバー設定と固定クエリ', () => {
     expect(config.host.osLabel).toBe('OS 未確認');
     expect(config.services).toEqual([]);
     expect(config.prometheusUrl).toBe('http://127.0.0.1:9090/prometheus/');
+    expect(config.listenHost).toBe('127.0.0.1');
+    expect(readConfig({ ...env, TCR_API_HOST: '0.0.0.0' }).listenHost).toBe('0.0.0.0');
+    expect(() => readConfig({ ...env, TCR_API_HOST: 'example.invalid' })).toThrow('TCR_API_HOST');
   });
   it.each(['ftp://example.invalid/', 'http://name:password@example.invalid/', 'https://example.invalid/?token=secret', 'https://example.invalid/#fragment'])('不正な URL を拒否する: %s', (url) => {
     expect(() => readConfig({ ...env, TCR_PROMETHEUS_URL: url })).toThrow();

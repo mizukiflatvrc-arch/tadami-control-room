@@ -1,6 +1,6 @@
 # β0.2 読み取り専用 API と Provider
 
-作業用 PC 上の実装。実 Prometheus / tadami に接続していない。監視基盤の配備案は [monitoring-infrastructure.md](monitoring-infrastructure.md) を参照。
+API は作業用 PC 上で実装・検証。監視基盤自体は実機配備・監査済み（ユーザー報告）だが、API から実 Prometheus / tadami への接続は未検証。01a のコンテナ化は [本番 Web 配備手順](production-web.md) を参照。監視基盤の運用手順は [monitoring-infrastructure.md](monitoring-infrastructure.md) を参照。
 
 ## データ取得モード
 
@@ -28,6 +28,7 @@
 
 | サーバー専用設定 | 契約 / 確認事項 |
 | --- | --- |
+| `TCR_API_HOST` / `TCR_API_PORT` | 既定 127.0.0.1:8787。コンテナ内だけ 0.0.0.0。ホストポート公開とは別 |
 | `TCR_PROMETHEUS_URL` | HTTP(S) の固定 URL。userinfo / query / fragment は禁止。TLS 検証を無効化しない |
 | `TCR_METRIC_PROFILE` | 明示的に `node-exporter-v1`。実際の系列・ラベルとの一致は導入後に確認 |
 | `TCR_HOST_ID` / `TCR_HOST_NAME` / `TCR_OS_LABEL` | 表示用の対象識別子。OS 未設定時は「OS 未確認」 |
@@ -45,7 +46,7 @@
 
 上流の全現在値クエリーが取得失敗なら HTTP エラー。正常な HTTP 応答でも系列が空なら取得成功とデータ欠損を区別し、`null` / unavailable とする。部分失敗では有効な項目を残す。UI は全取得失敗時に最終成功値を保持し、30 秒を超える元データを更新遅延にする。
 
-今回のサーバーは **ローカル開発用の loopback 待受のみ**。ブラウザー側の本番アクセス制御、リバースプロキシ、TLS、本番コンテナ化は未実装で、LAN にそのまま公開する構成ではない。
+01a では本番コンテナと固定リバースプロキシを追加した。API の待受は `TCR_API_HOST` 未指定で loopback を維持し、Compose 内だけ `0.0.0.0` を指定する。ホストへの API ポート公開はなく、Web の `127.0.0.1:18080` と SSH 転送を使う。TLS / アプリ認証はこの loopback 運用では追加していない。実機の到達性・アクセス範囲は未検証。
 
 ## 固定クエリーと変換
 

@@ -1,0 +1,27 @@
+# Allowlist build context: credentials and local artifacts cannot enter layers.
+**
+!package.json
+!package-lock.json
+!tsconfig.json
+!vite.config.ts
+!vite.server.config.ts
+!index.html
+!src/
+!src/**
+!server/
+!server/**
+!public/
+!public/**
+!infra/
+!infra/web/
+!infra/web/Dockerfile
+!tools/
+!tools/production/
+!tools/production/check-build.ts
+# Defense in depth even inside allowed source directories.
+**/.env*
+**/*.local
+**/*.pem
+**/*.key
+**/.aws/**
+**/.git/**

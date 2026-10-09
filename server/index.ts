@@ -8,8 +8,8 @@ try {
     console.error('API の起動に失敗しました。ローカルポートの使用状況を確認してください。');
     process.exitCode = 1;
   });
-  server.listen(config.port, '127.0.0.1', () => {
-    console.log(`TADAMI API: http://127.0.0.1:${config.port}（読み取り専用）`);
+  server.listen(config.port, config.listenHost, () => {
+    console.log(`TADAMI API: http://${config.listenHost}:${config.port}（読み取り専用）`);
   });
   const close = () => { server.close(); server.closeAllConnections(); };
   process.once('SIGINT', close);

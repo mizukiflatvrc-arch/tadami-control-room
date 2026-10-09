@@ -1,5 +1,9 @@
 node_modules/
 dist/
+dist-web/
+dist-server/
+infra/web/api.env
+!infra/web/.env.example
 coverage/
 test-results/
 playwright-report/
