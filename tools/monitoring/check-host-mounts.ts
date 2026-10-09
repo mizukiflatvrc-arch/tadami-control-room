@@ -4,7 +4,9 @@ import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import { NODE_HOST_MOUNTS, ROOT_PROBE_DIR } from './host-mount-policy';
 
+type MountInfoFile = 'host.mountinfo' | 'node.mountinfo';
 type MountInfo = {
+  file: MountInfoFile; line: number;
   device: string; root: string; target: string; options: string[]; propagation: string[];
   fstype: string; source: string;
 };
@@ -32,28 +34,44 @@ const inspectSchema = z.tuple([z.object({
 const decodePath = (value: string) => value.replace(/\\(040|011|012|134)/g,
   (_, octal: string) => String.fromCharCode(Number.parseInt(octal, 8)));
 const within = (path: string, directory: string) => path === directory || path.startsWith(`${directory}/`);
+const absolutePath = (path: string) => path.startsWith('/') && posix.normalize(path) === path;
+// Linux fs/nsfs.c: nsfs_show_path() emits ns_ops->name:[inode], not a pathname.
+// https://github.com/torvalds/linux/blob/v6.6/fs/nsfs.c
+const namespaceRoot = /^(?:mnt|net|pid|pid_for_children|user|uts|ipc|cgroup|time|time_for_children):\[[0-9]+\]$/;
+const mountLocation = (mount: MountInfo) =>
+  `${mount.file} の ${mount.line} 行目（fstype=${JSON.stringify(mount.fstype)}）`;
+const mountLocations = (file: MountInfoFile, mounts: MountInfo[]) =>
+  mounts.length ? mounts.map(mountLocation).join(', ') : `${file}（該当行なし）`;
 
-function parseMountInfo(contents: string): MountInfo[] {
-  if (!contents.trim()) throw new Error('mountinfo が空です');
+function parseMountInfo(contents: string, file: MountInfoFile): MountInfo[] {
+  if (!contents.trim()) throw new Error(`${file} の 1 行目: mountinfo が空です`);
   const ids = new Set<string>();
-  return contents.trim().split('\n').map((line, index) => {
-    const fields = line.trim().split(/\s+/);
+  const lines = contents.split(/\r?\n/);
+  if (lines.at(-1) === '') lines.pop();
+  return lines.map((line, index) => {
+    const fields = line.split(' ');
     const separator = fields.indexOf('-');
     const [id, parent, device, rawRoot, rawTarget, options] = fields;
     if (separator < 6 || fields.length !== separator + 4 || !id || !/^\d+$/.test(id)
       || !parent || !/^\d+$/.test(parent) || !device || !/^\d+:\d+$/.test(device)
-      || !rawRoot || !rawTarget || !options || ids.has(id)) {
-      throw new Error(`mountinfo の ${index + 1} 行目が不正です`);
+      || !rawRoot || !rawTarget || !options || fields.some((field) => !field) || ids.has(id)) {
+      throw new Error(`${file} の ${index + 1} 行目が不正です`);
     }
     ids.add(id);
     const root = decodePath(rawRoot);
     const target = decodePath(rawTarget);
-    if (![root, target].every((path) => path.startsWith('/') && posix.normalize(path) === path)) {
-      throw new Error(`mountinfo の ${index + 1} 行目のパスが不正です`);
+    const fstype = fields[separator + 1]!;
+    // Only root has an nsfs exception. Targets always remain canonical absolute paths.
+    // Reject raw controls and escapes that Linux does not use for these path fields.
+    const validEncoding = (value: string) => [...value].every((char) => char.charCodeAt(0) > 32 && char.charCodeAt(0) !== 127)
+      && !/\\(?!040|011|012|134)/.test(value);
+    if (![rawRoot, rawTarget].every(validEncoding) || !absolutePath(target)
+      || !(absolutePath(root) || (fstype === 'nsfs' && namespaceRoot.test(root)))) {
+      throw new Error(`${file} の ${index + 1} 行目のパスが不正です（fstype=${JSON.stringify(fstype)}, root=${JSON.stringify(root)}, target=${JSON.stringify(target)}）`);
     }
     return {
-      device, root, target, options: options.split(','), propagation: fields.slice(6, separator),
-      fstype: fields[separator + 1]!, source: decodePath(fields[separator + 2]!),
+      file, line: index + 1, device, root, target, options: options.split(','), propagation: fields.slice(6, separator),
+      fstype, source: decodePath(fields[separator + 2]!),
     };
   });
 }
@@ -65,8 +83,8 @@ export function checkHostMounts(inspect: unknown, containerMountInfo: string, ho
   let mounts: MountInfo[];
   let hostMounts: MountInfo[];
   try {
-    mounts = parseMountInfo(containerMountInfo);
-    hostMounts = parseMountInfo(hostMountInfo);
+    mounts = parseMountInfo(containerMountInfo, 'node.mountinfo');
+    hostMounts = parseMountInfo(hostMountInfo, 'host.mountinfo');
   } catch (error) {
     return [error instanceof Error ? error.message : 'mountinfo を解析できません'];
   }
@@ -85,31 +103,33 @@ export function checkHostMounts(inspect: unknown, containerMountInfo: string, ho
     must(expected.recursive === 'disabled' ? options?.NonRecursive === true
       : options?.ReadOnlyForceRecursive === true && options.NonRecursive !== true,
     `inspect: ${expected.target} の recursive 設定が不一致`);
-    must(mounts.filter((mount) => mount.target === expected.target).length === 1,
-      `mountinfo: ${expected.target} が欠落または多重マウント`);
+    const matchingMounts = mounts.filter((mount) => mount.target === expected.target);
+    must(matchingMounts.length === 1,
+      `${mountLocations('node.mountinfo', matchingMounts)}: ${expected.target} が欠落または多重マウント`);
   }
   const hostTargets = mounts.filter((mount) => within(mount.target, '/host'));
   const targets = new Set<string>();
   const dockerArea = /(?:^|\/)(?:var\/lib\/(?:docker|containerd|containers)|run\/(?:docker|containerd))(?:\/|$)/;
   for (const mount of hostTargets) {
-    must(!targets.has(mount.target), `mountinfo: ${mount.target} が多重マウント`);
+    const location = mountLocation(mount);
+    must(!targets.has(mount.target), `${location}: ${mount.target} が多重マウント`);
     targets.add(mount.target);
     must(mount.options.includes('ro') && !mount.options.includes('rw'),
-      `mountinfo: ${mount.target} は読み取り専用ではありません`);
+      `${location}: ${mount.target} は読み取り専用ではありません`);
     must(!mount.propagation.some((flag) => /^(shared|master|propagate_from):/.test(flag)),
-      `mountinfo: ${mount.target} は private ではありません`);
+      `${location}: ${mount.target} は private ではありません`);
     must(NODE_HOST_MOUNTS.some((expected) => expected.target === '/host/sys'
       ? within(mount.target, expected.target) : mount.target === expected.target),
-      `mountinfo: ${mount.target} は許可していないホストマウント`);
+      `${location}: ${mount.target} は許可していないホストマウント`);
     const metadataTypes = within(mount.target, '/host/proc') ? ['proc']
       : within(mount.target, '/host/sys') ? ['sysfs', 'cgroup', 'cgroup2', 'securityfs', 'debugfs', 'tracefs', 'pstore', 'efivarfs', 'bpf', 'fusectl', 'configfs'] : null;
     must(metadataTypes === null || metadataTypes.includes(mount.fstype),
-      `mountinfo: ${mount.target} に proc/sys 以外のファイルシステムが露出`);
+      `${location}: ${mount.target} に proc/sys 以外のファイルシステムが露出`);
     must(mount.target === '/host/root' || !within(mount.target, '/host/root'),
-      `mountinfo: ${mount.target} は probe 配下の不要な子マウント`);
+      `${location}: ${mount.target} は probe 配下の不要な子マウント`);
     must(![mount.root, mount.target, mount.source].some((path) => dockerArea.test(path))
       && !['overlay', 'nsfs'].includes(mount.fstype),
-    `mountinfo: ${mount.target} に Docker 管理領域・runtime マウントが露出`);
+    `${location}: ${mount.target} に Docker 管理領域・runtime マウントが露出`);
   }
   // The statfs probe must refer to exactly the same filesystem/subtree as the host's /.
   const roots = hostMounts.filter((mount) => mount.target === '/');
@@ -118,10 +138,11 @@ export function checkHostMounts(inspect: unknown, containerMountInfo: string, ho
   must(roots.length === 1 && !!hostRoot && !!probe && probe.device === hostRoot.device
     && probe.fstype === hostRoot.fstype && probe.source === hostRoot.source
     && probe.root === posix.join(hostRoot.root, ROOT_PROBE_DIR),
-  'probe: ホスト / と同じファイルシステム・専用ディレクトリではありません');
-  must(!hostMounts.some((mount) => mount.target !== '/'
-    && (within(ROOT_PROBE_DIR, mount.target) || within(mount.target, ROOT_PROBE_DIR))),
-  'probe: ホスト側の probe・親・子に別マウントがあります');
+  `probe: ホスト / と同じファイルシステム・専用ディレクトリではありません（${mountLocations('host.mountinfo', roots)}; ${mountLocations('node.mountinfo', mounts.filter((mount) => mount.target === '/host/root'))}）`);
+  const probeMounts = hostMounts.filter((mount) => mount.target !== '/'
+    && (within(ROOT_PROBE_DIR, mount.target) || within(mount.target, ROOT_PROBE_DIR)));
+  must(probeMounts.length === 0,
+    `probe: ホスト側の probe・親・子に別マウントがあります（${mountLocations('host.mountinfo', probeMounts)}）`);
   for (const target of ['/proc', '/sys']) {
     const reference = hostMounts.filter((mount) => mount.target === target);
     for (const expected of NODE_HOST_MOUNTS.filter((mount) => within(mount.source, target))) {
@@ -129,7 +150,7 @@ export function checkHostMounts(inspect: unknown, containerMountInfo: string, ho
       must(reference.length === 1 && !!actual && actual.device === reference[0]?.device
         && actual.root === posix.join(reference[0]!.root, posix.relative(target, expected.source))
         && actual.fstype === reference[0]?.fstype,
-      `mountinfo: ${expected.target} がホストの ${expected.source} と不一致`);
+      `${mountLocations('node.mountinfo', actual ? [actual] : [])}; ${mountLocations('host.mountinfo', reference)}: ${expected.target} がホストの ${expected.source} と不一致`);
     }
   }
   return errors;
