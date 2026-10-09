@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { parseDocument } from 'yaml';
 import { z } from 'zod';
+import { NODE_HOST_MOUNTS } from './host-mount-policy';
 
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const imageLock = z.object({
@@ -13,7 +14,10 @@ const imageLock = z.object({
 }).strict();
 const mount = z.object({
   type: z.literal('bind'), source: z.string(), target: z.string(), read_only: z.boolean().optional(),
-  bind: z.object({ create_host_path: z.literal(false), propagation: z.enum(['rprivate', 'rslave']).optional() }).strict(),
+  bind: z.object({
+    create_host_path: z.literal(false), propagation: z.literal('rprivate').optional(),
+    recursive: z.enum(['readonly', 'disabled']).optional(),
+  }).strict(),
 }).strict();
 const service = z.object({
   image: z.string(), platform: z.literal('linux/amd64'), user: z.literal('65534:65534'),
@@ -73,25 +77,21 @@ export function checkConfig(compose: unknown, prometheus: unknown, lock: unknown
     && prom.volumes[0]?.target === '/etc/prometheus/prometheus.yml' && prom.volumes[0]?.read_only === true
     && prom.volumes[1]?.source === '${TCR_PROMETHEUS_DATA_DIR:?OS用NVMe上の専用ディレクトリを確認して指定してください}'
     && prom.volumes[1]?.target === '/prometheus' && !prom.volumes[1]?.read_only
-    && prom.volumes.every((volume) => volume.bind.propagation !== 'rslave'),
+    && prom.volumes.every((volume) => volume.bind.recursive === undefined),
   'Prometheus: マウント先・読み取り権限・必須データパスを確認');
   const node = c.data.services['node-exporter'];
   const required = ['--web.listen-address=0.0.0.0:9100', '--web.disable-exporter-metrics',
     '--path.procfs=/host/proc', '--path.sysfs=/host/sys', '--path.rootfs=/host/root', '--collector.disable-defaults',
     ...['cpu', 'meminfo', 'diskstats', 'filesystem', 'stat', 'time', 'mdadm'].map((name) => `--collector.${name}`)];
   must(required.every((flag) => node.command.includes(flag)) && node.command.length === required.length + 2
-    && node.command.some((flag) => flag.startsWith('--collector.filesystem.mount-points-exclude=^/') && flag.endsWith('($$|/)'))
+    && node.command.includes('--collector.filesystem.mount-points-include=^/$$')
     && node.command.some((flag) => flag.startsWith('--collector.filesystem.fs-types-exclude=^(') && flag.endsWith(')$$')),
   'Node Exporter: collector・パス・除外式を確認');
-  const hostMounts = [
-    { source: '/proc', target: '/host/proc', propagation: 'rprivate' },
-    { source: '/sys', target: '/host/sys', propagation: 'rprivate' },
-    { source: '/', target: '/host/root', propagation: 'rslave' },
-  ];
-  must(node.volumes.length === hostMounts.length && hostMounts.every((expected, index) => {
+  must(node.volumes.length === NODE_HOST_MOUNTS.length && NODE_HOST_MOUNTS.every((expected, index) => {
     const volume = node.volumes[index];
     return volume?.source === expected.source && volume.target === expected.target
-      && volume.read_only === true && volume.bind.propagation === expected.propagation;
+      && volume.read_only === true && volume.bind.propagation === 'rprivate'
+      && volume.bind.recursive === expected.recursive;
   }), 'Node Exporter: ホストマウントは所定の読み取り専用パス・伝播モードに限定');
   const jobs = p.data.scrape_configs;
   must(jobs[0].job_name === 'tadami-node' && jobs[0].static_configs[0].targets[0] === 'node-exporter:9100'

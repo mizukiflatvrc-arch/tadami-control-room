@@ -2,12 +2,13 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { checkConfig, readYaml } from '../../tools/monitoring/check-config';
+import { NODE_HOST_MOUNTS } from '../../tools/monitoring/host-mount-policy';
 
 const original = readYaml('infra/monitoring/compose.yaml');
 const prometheus = readYaml('infra/monitoring/prometheus.yml');
 const lock = JSON.parse(readFileSync('infra/monitoring/images.lock.json', 'utf8'));
 type MountCompose = {
-  services: Record<string, { volumes: { source: string; read_only?: boolean; bind: { propagation?: string } }[] }>;
+  services: Record<string, { volumes: { source: string; read_only?: boolean; bind: { propagation?: string; recursive?: string } }[] }>;
 };
 
 describe('監視基盤の配備前安全検査', () => {
@@ -31,16 +32,12 @@ describe('監視基盤の配備前安全検査', () => {
     compose.services.prometheus!.volumes[1]!.source = '/mnt/md0/metrics';
     expect(checkConfig(compose, prometheus, lock).length).toBeGreaterThan(1);
   });
-  it.each([
-    [0, 'rslave'], [0, 'rshared'], [0, undefined],
-    [1, 'rslave'], [1, 'rshared'], [1, undefined],
-    [2, 'rprivate'], [2, 'rshared'], [2, undefined],
-  ])('ホストマウント %i の不正な伝播モード %s を拒否', (index, propagation) => {
+  it.each(NODE_HOST_MOUNTS.flatMap((_, index) => ['rslave', 'rshared', undefined].map((propagation) => [index, propagation] as const)))('ホストマウント %i の不正な伝播モード %s を拒否', (index, propagation) => {
     const compose = structuredClone(original) as MountCompose;
     compose.services['node-exporter']!.volumes[index]!.bind.propagation = propagation;
     expect(checkConfig(compose, prometheus, lock).length).toBeGreaterThan(0);
   });
-  it.each([0, 1, 2])('ホストマウント %i の読み取り専用解除・省略を拒否', (index) => {
+  it.each(NODE_HOST_MOUNTS.map((_, index) => index))('ホストマウント %i の読み取り専用解除・省略を拒否', (index) => {
     for (const readOnly of [false, undefined]) {
       const compose = structuredClone(original) as MountCompose;
       compose.services['node-exporter']!.volumes[index]!.read_only = readOnly;
@@ -50,7 +47,25 @@ describe('監視基盤の配備前安全検査', () => {
   it.each([0, 1])('Prometheus マウント %i への rslave の適用を拒否', (index) => {
     const compose = structuredClone(original) as MountCompose;
     compose.services.prometheus!.volumes[index]!.bind.propagation = 'rslave';
-    expect(checkConfig(compose, prometheus, lock)).toContain('Prometheus: マウント先・読み取り権限・必須データパスを確認');
+    expect(checkConfig(compose, prometheus, lock).length).toBeGreaterThan(0);
+  });
+  it.each(NODE_HOST_MOUNTS.flatMap((mount, index) => ['disabled', 'readonly', 'enabled', 'writable', undefined]
+    .filter((recursive) => recursive !== mount.recursive).map((recursive) => [index, recursive] as const)))('ホストマウント %i の不正な recursive 設定 %s を拒否', (index, recursive) => {
+    const compose = structuredClone(original) as MountCompose;
+    compose.services['node-exporter']!.volumes[index]!.bind.recursive = recursive;
+    expect(checkConfig(compose, prometheus, lock).length).toBeGreaterThan(0);
+  });
+  it.each(['/', '/var', '/var/lib/docker', '/run/docker', '/var/lib/containerd', '/proc'])('probe の代わりに %s を渡す構成を拒否', (source) => {
+    const compose = structuredClone(original) as MountCompose;
+    compose.services['node-exporter']!.volumes.at(-1)!.source = source;
+    expect(checkConfig(compose, prometheus, lock).length).toBeGreaterThan(0);
+  });
+  it('probe 以外のファイルシステムの容量収集を拒否', () => {
+    const compose = structuredClone(original) as { services: { 'node-exporter': { command: string[] } } };
+    const node = compose.services['node-exporter'];
+    node.command = node.command.map((flag) => flag === '--collector.filesystem.mount-points-include=^/$$'
+      ? '--collector.filesystem.mount-points-include=.*' : flag);
+    expect(checkConfig(compose, prometheus, lock)).toContain('Node Exporter: collector・パス・除外式を確認');
   });
   it('外部収集と収集間隔の変更を拒否', () => {
     const config = structuredClone(prometheus) as { global: { scrape_interval: string }; scrape_configs: { static_configs: { targets: string[] }[] }[] };

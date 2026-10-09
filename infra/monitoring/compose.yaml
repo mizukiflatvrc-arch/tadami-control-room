@@ -1,4 +1,4 @@
-# 配備前レビュー用。起動前に docs/monitoring-infrastructure.md を読むこと。
+# 実機未検証の構成候補。専用 probe の所在と docs/monitoring-infrastructure.md の配備条件を確認すること。
 name: tadami-monitoring
 
 services:
@@ -68,16 +68,50 @@ services:
       - --collector.stat
       - --collector.time
       - --collector.mdadm
-      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker|var/lib/containers)($$|/)
+      # /host/root はホスト / と同じ FS 上の空ディレクトリ。容量取得を / のみに限定する。
+      - --collector.filesystem.mount-points-include=^/$$
       - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|erofs|sysfs|tmpfs|tracefs)$$
     volumes:
       - type: bind
-        source: /proc
-        target: /host/proc
+        source: /proc/stat
+        target: /host/proc/stat
         read_only: true
         bind:
           create_host_path: false
           propagation: rprivate
+          recursive: disabled
+      - type: bind
+        source: /proc/meminfo
+        target: /host/proc/meminfo
+        read_only: true
+        bind:
+          create_host_path: false
+          propagation: rprivate
+          recursive: disabled
+      - type: bind
+        source: /proc/diskstats
+        target: /host/proc/diskstats
+        read_only: true
+        bind:
+          create_host_path: false
+          propagation: rprivate
+          recursive: disabled
+      - type: bind
+        source: /proc/mdstat
+        target: /host/proc/mdstat
+        read_only: true
+        bind:
+          create_host_path: false
+          propagation: rprivate
+          recursive: disabled
+      - type: bind
+        source: /proc/1/mountinfo
+        target: /host/proc/1/mountinfo
+        read_only: true
+        bind:
+          create_host_path: false
+          propagation: rprivate
+          recursive: disabled
       - type: bind
         source: /sys
         target: /host/sys
@@ -85,13 +119,16 @@ services:
         bind:
           create_host_path: false
           propagation: rprivate
+          recursive: readonly
       - type: bind
-        source: /
+        # / 全体や Docker の管理領域を共有しない。実機で確認後に別途準備する。
+        source: /var/lib/tadami-control-room/node-exporter-root-probe
         target: /host/root
         read_only: true
         bind:
           create_host_path: false
-          propagation: rslave
+          propagation: rprivate
+          recursive: disabled
     networks: [monitoring]
     logging:
       driver: json-file
