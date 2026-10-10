@@ -3,7 +3,7 @@
 自宅サーバー `tadami` 専用の日本語監視 Web アプリケーション。
 白背景・黒文字・細い罫線を基調に、1990 年代の研究施設の監視端末を思わせる独自 UI を構築する。
 
-現在は **β0.3 / 01a の本番 Web 配備準備版**。開発用モックを維持し、本番用の React 静的ビルド、読み取り専用 API、分離した Web / API コンテナ構成を追加した。Prometheus / Node Exporter はユーザー報告により tadami で配備・実機検証済み。Web / API の実機配備・接続は未実施。既定の開発画面は「模擬データ」、本番ビルドは API モードに固定する。
+現在は **β0.3 / 01b の localhost リレー恒常運用準備版**。非特権 socat と Docker 状態を読む root 補助処理を分離し、systemd 管理とコンテナ IP 変更への追従を実装した。Prometheus / Node Exporter、および手動 socat 経由の Web / API 実データ表示はユーザー報告により tadami で確認済み。今回の恒常サービスの実機適用は未実施。既定の開発画面は「模擬データ」、本番ビルドは API モードに固定する。
 
 | 項目 | 方針 |
 | --- | --- |
@@ -11,7 +11,7 @@
 | 本番対象 | `tadami` / Ubuntu 24.04.5 LTS（ユーザー確認済み構成。今回の実機アクセスなし） |
 | 基準画面 | 本体モニター 1280×1024、5:4 |
 | 初期表示 | CPU・メモリ・ストレージ・稼働時間・サービス状態 |
-| 監視基盤 | Prometheus + Node Exporter は実機配備済み（ユーザー報告）。Web / API は配備準備 |
+| 監視基盤 | Prometheus + Node Exporter、手動リレー経由の Web / API は実機確認済み（ユーザー報告）。恒常リレーは配備準備 |
 | UI | 独立した Web アプリ。日本語、白黒、細い罫線 |
 
 設計文書は次の順に参照する。
@@ -23,6 +23,8 @@
 5. [監視基盤の運用手順](docs/monitoring-infrastructure.md)：イメージ固定、権限、NVMe 保存、安全検査、バックアップ・復旧。
 6. [β0.3 / 01a 本番 Web 配備手順](docs/production-web.md)：構成、設定、配備前検査、SSH トンネル、停止・ロールバック、キオスクへの引き継ぎ。
 7. [01a 検証記録](docs/verification-beta-0.3-01a.md)：ローカル検証と未検証の区別。
+8. [01b localhost リレー配備・運用手順](docs/localhost-relay.md)：権限分離、IP 追従、段階的切替、停止・ロールバック。
+9. [01b 検証記録](docs/verification-beta-0.3-01b.md)：ローカルテストと実機未検証事項。
 
 ## 開発環境での起動
 
@@ -80,7 +82,7 @@ npm run build:production
 npm run test:production
 ```
 
-`dist-web/` は API モード固定の静的 UI、`dist-server/` はコンパイル済み Node API / 配信処理。`test:production` は localhost の架空 HTTP 応答による試験で、実 Prometheus 接続の確認ではない。Docker の構成は [infra/web/compose.yaml](infra/web/compose.yaml)、詳細は [本番 Web 配備手順](docs/production-web.md)。公開候補は tadami の `127.0.0.1:18080` のみ。内部ネットワークと公開ポートの実動作は配備時に確認する。Xorg・ブラウザーは後続でホスト OS に導入し、同じ URL を表示する。
+`dist-web/` は API モード固定の静的 UI、`dist-server/` はコンパイル済み Node API / 配信処理。`test:production` は localhost の架空 HTTP 応答による試験で、実 Prometheus 接続の確認ではない。Docker の構成は [infra/web/compose.yaml](infra/web/compose.yaml)、詳細は [本番 Web 配備手順](docs/production-web.md)。Docker のホスト公開ポートはなく、[ホストリレー](docs/localhost-relay.md) が `127.0.0.1:18080` だけで待受する。`npm run test:relay` でポリシー・unit を検査し、socat があれば実 TCP 試験も実行する。Xorg・ブラウザーは後続でホスト OS に導入し、同じ URL を表示する。
 
 ## 検証コマンド
 
@@ -116,6 +118,7 @@ Chromium が利用可能になった後は `npm run check` で一括実行でき
 - `fixtures/prometheus/`：架空の HTTP 応答とテストサーバー。
 - `infra/monitoring/`：実機配備済み監視基盤の Compose / Prometheus 設定・イメージロック（ユーザー報告）。
 - `infra/web/`：Web / API の本番配備構成と実行時設定テンプレート。
+- `infra/relay/`：ホストの非特権 TCP リレー、Docker 補助処理、systemd / sysusers 設定。
 - `tests/`：計算・状態遷移・HTTP・設定安全性・ブラウザーの検証。
 
 5 秒間隔で取得し、進行中の要求を重複させない。非表示タブでは停止、復帰時に再取得する。取得失敗では前回値を保持し、観測から 30 秒を超えると更新遅延とする。履歴は最大 61 点で、欠損を線でつながない。UI の閾値は `src/config/monitoring.ts` で管理する。
@@ -124,6 +127,6 @@ Chromium が利用可能になった後は `npm run check` で一括実行でき
 
 ## 後続作業
 
-01a の Docker イメージ build / 起動と tadami の localhost ポート・内部 DNS・実 Prometheus 接続・権限・資源制限を実機で確認する。既存監視基盤はユーザーの実測報告を反映したが、この作業で再検証していない。01b・01c で最小 Xorg・ホスト側キオスクブラウザー・起動権限・TTY・画面消灯防止・自動復旧を扱う。サービス収集方式、RAID の API/UI 拡張、実時間の長時間稼働も後続。
+01b の恒常リレーをレビュー後に tadami へ反映し、systemd の実効権限・bridge 到達性・再作成追従・OS 再起動後の復旧を確認する。手動リレーによる実データ表示はユーザー報告を反映したが、この作業で再検証していない。最小 Xorg・ホスト側キオスクブラウザー・起動権限・TTY・画面消灯防止、サービス収集方式、RAID の API/UI 拡張、実時間の長時間稼働は後続。
 
 今回は tadami への SSH、本番デプロイ、既存監視コンテナの操作、SSH・WireGuard・Eternal Terminal・UFW の設定変更、Xorg・ブラウザーの導入を行っていない。

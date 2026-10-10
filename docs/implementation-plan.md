@@ -1,5 +1,7 @@
 # 実装計画
 
+> β0.3 / 01b 更新：今回の範囲は localhost TCP リレーの恒常化・systemd 管理・ローカル検証・配備手順。手動 socat 経由の実データ表示はユーザー確認済み。レビュー後の実機切替、Xorg / kiosk は後続。[恒常リレー手順](localhost-relay.md)、[01b 検証記録](verification-beta-0.3-01b.md) を参照。
+
 > β0.3 / 01a 更新：Prometheus / Node Exporter は tadami で実機配備・監査済み（ユーザー報告）。Web / API の本番コンテナ構成と API 固定ビルドを himekami で実装。Web の Docker 起動・実機接続は未実施。[本番配備手順](production-web.md)、[検証記録](verification-beta-0.3-01a.md) を参照。以下の初期設計・β0.1/β0.2 の記述は経緯として保持する。
 
 > β0.1 の状況：段階 1〜3 を実装し、段階 4 の型検査・lint・テスト・ビルド・画面確認を実施済み。連続更新は仮想時計で 1 時間分を検証し、実時間の長時間試運転は残している。検証結果と未確認事項は [verification.md](verification.md) を参照。以下の段階定義は初期計画を保持している。

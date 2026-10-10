@@ -1,6 +1,8 @@
 # β0.3 / 01a 本番 Web 配備基盤
 
-2026-10-09。今回の成果物は himekami 上の実装とローカル検証。以下の tadami 用コマンドは**手順書であり今回実行していない**。既存の監視基盤・ネットワーク、SSH、WireGuard、Eternal Terminal、UFW を変更しない。Xorg、ブラウザー、systemd kiosk の導入は 01b・01c。
+01b 更新：localhost 接続は [恒常リレーの配備・運用手順](localhost-relay.md) に従う。Web の Docker ports は削除済み。手動 socat 経由の Web/API 実データ表示はユーザー確認済みで、systemd 版の実機切替は未実施。以下の01a時点の実機未検証記述は当時の記録。
+
+2026-10-09。01a の成果物は himekami 上の実装とローカル検証。以下の tadami 用コマンドは**手順書であり今回実行していない**。既存の監視基盤・ネットワーク、SSH、WireGuard、Eternal Terminal、UFW を変更しない。Xorg、ブラウザー、systemd kiosk の導入は後続。
 
 ## 構成と選定理由
 
@@ -9,6 +11,7 @@
 現在の確認方法: himekami ブラウザー → SSH ローカル転送
                           ↓
              tadami 127.0.0.1:18080
+             ホストの非特権 socat（01b）
                           ↓
 新規 tadami-web プロジェクト
   web:8080 [React 静的成果物 + 固定 API proxy]
@@ -30,7 +33,7 @@ API の PromQL、変換、型、鮮度、2 同時要求、4 並列上流取得�
 | ファイル | 内容 |
 | --- | --- |
 | `infra/web/Dockerfile` | npm ci、静的 UI / JS API の build、本番依存、Web / API の 2 target |
-| `infra/web/compose.yaml` | 独立した Web プロジェクト。唯一の公開ポートは 127.0.0.1:18080 |
+| `infra/web/compose.yaml` | 独立した Web プロジェクト。Docker のホスト公開ポートなし（01b） |
 | `infra/web/.env.example` | Compose 補間用の固定リリース識別子 |
 | `infra/web/api.env.example` | API の実行時だけ渡す tadami 用設定候補 |
 | `.dockerignore` | build context の許可リスト。env、Git、AWS、ローカル成果物を除外 |
@@ -72,11 +75,12 @@ docker compose -f infra/web/compose.yaml build --pull
 
 ## 起動と実機の受け入れ検査（未実施）
 
+01b の Compose では先に [リレー切替手順](localhost-relay.md) を確認する。既存配備の切替時はその手順の `--no-deps web` による再作成を使い、以下のプロジェクト全体の up は初回構築用とする。curl はホストリレー起動後に行う。
+
 ```sh
 docker compose -f infra/web/compose.yaml up -d --no-build
 docker compose -f infra/web/compose.yaml ps
 docker compose -f infra/web/compose.yaml logs --tail=100 web monitoring-api
-docker compose -f infra/web/compose.yaml port web 8080
 curl --fail --max-time 10 http://127.0.0.1:18080/
 curl --fail --max-time 10 http://127.0.0.1:18080/api/monitoring/snapshot
 ```
@@ -86,27 +90,19 @@ curl --fail --max-time 10 http://127.0.0.1:18080/api/monitoring/snapshot
 `docker compose ... ps -q` の ID を使って `docker inspect` を保存し、次を確認する。env を含む inspect 全体の共有は避ける。
 
 - web は frontend のみ、API は frontend と既存 monitoring のみ。frontend は Internal=true。既存 monitoring の属性と既存 2 コンテナは変更されていない。
-- PortBindings は web の 8080/tcp → HostIp=127.0.0.1 / HostPort=18080 だけ。API / 9090 / 9100 の HostPort がない。Dockerfile の EXPOSE はホスト公開ではない。
+- PortBindings は Web / API とも空。8080 / 8787 / 9090 / 9100 の HostPort がない。127.0.0.1:18080 はホストリレーだけが待受する。Dockerfile の EXPOSE はホスト公開ではない。
 - Config.User=1000:1000、ReadonlyRootfs=true、CapDrop=ALL、no-new-privileges、資源・PID・ログ制限、Mounts が空、privileged=false、host network / PID 不使用。
-- `ss -lnt` と localhost curl の両方を確認する。NAT の実装では ss に表示されなくても公開が成立する場合があるため、ss だけで判断しない。
+- `ss -4 -lntp` の 127.0.0.1:18080、IPv6 待受なし、localhost curl の両方を確認する。
 - API コンテナから `fetch('http://prometheus:9090/-/ready')`、名前解決、Snapshot を確認する。Web からは Prometheus の名前解決・接続が成立しないこと、各コンテナから不要な外部通信が成立しないことを確認する。内部 bridge の host gateway とホストの既存サービスへの到達可能性も調べる。
 - himekami から tadami の WireGuard/LAN アドレスの 18080 / 8787 / 9090 / 9100 に直接接続できないことを確認する。localhost bind はインターネット向け公開の防止を目的とするが、daemon の direct routing 等も合わせて検査する。[Docker のポート公開仕様](https://docs.docker.com/engine/network/port-publishing/)
 
 Web / API 障害は新規サービスだけで試験する。API を停止しても UI が表示され、取得エラー・前回値・遅延が表示されること、API の再起動・再作成後に名前解決を経て自動復旧することを確認する。既存 Prometheus / Node Exporter を止める試験は今回の手順に含めない。資源制限下での取得期限、OOM、有効 CPU / メモリ負荷、実時間の連続運転は未検証。
 
-### internal network と公開ポートが成立しない場合
+### internal network と公開ポート（01b で解決する対象）
 
-Compose は `internal: true` と `ports` を記述できるが、記述可能なことと localhost DNAT の成立は別。Docker daemon / firewall backend / userland-proxy に依存するため、この構成の 29.8.2 / Compose 5.6.0 上の到達性は未検証。公開設定が inspect にあっても curl の成功を必須とする。成り立たない場合は配備完了と扱わない。
+ユーザーの実機確認では `HostConfig.PortBindings` に `127.0.0.1:18080:8080` が存在しても、`NetworkSettings.Ports` は `8080/tcp:null` でホストポートが割り当てられなかった。一方、ホスト→Web 内部 IPv4:8080 と手動 socat 経由では Web/API とも200、SSHトンネル経由の実データ表示が確認済み。
 
-安全な代替は、**Web の ports を削除したうえで、ホストの非特権 relay を 127.0.0.1:18080 に限定して Web の内部 bridge IP:8080 に転送する方式**。frontend / monitoring は internal のまま、Prometheus / Node Exporter / API はホスト非公開を維持する。例えば別途レビューする override は次のとおり（Compose の `!reset` 対応も CLI 検証が必要）。
-
-```yaml
-services:
-  web:
-    ports: !reset []
-```
-
-ホストから inspect 済み Web IP:8080 へ curl できることを先に確認し、その IP に限定して `socat TCP4-LISTEN:18080,bind=127.0.0.1,reuseaddr,fork TCP4:<web-bridge-ip>:8080` のような非 root relay を用いる。IP は再作成で変わるため、専用 service の再起動・IP 更新・資源制限・ログ管理が運用負荷となる。これは代替案であり今回は socat のインストール、override 適用、service 作成をしない。成立しない場合は停止して別途設計する。Web を外部接続可能 bridge に参加させる案は egress 経路を増やすため採用していない。9090/9100 公開、UFW 無効化、host network は代替にしない。
+01b では Web Compose の ports を削除し、専用の非特権ホストリレーを採用する。root 補助処理が Compose ラベル・network・IPを検証し、IP変更に追従する。[選定理由・systemd unit・段階的切替・ロールバック](localhost-relay.md) を参照。frontend / monitoring は internal のまま維持し、監視 Compose、Docker daemon、UFW、SSH、WireGuard は変更しない。
 
 ## SSH トンネル
 
@@ -135,7 +131,7 @@ docker compose -f infra/web/compose.yaml down
 | 症状 | 確認箇所 |
 | --- | --- |
 | Compose config / 起動拒否 | TCR_RELEASE、api.env の所在・権限、既存ネットワークの有無、API ログの不足フィールド名 |
-| localhost UI に到達不能 | web の状態、内部8080、PortBindings、18080競合、internal と NAT の成立。上記代替案へ |
+| localhost UI に到達不能 | web の状態、内部8080、relay/resolver の journal、期限付き target、18080競合。01b 手順へ |
 | UI は開くが 502/504 | API のプロセス、frontend DNS、API→Prometheus の DNS / ready、固定ラベル、上流期限 |
 | 200 だが欠損・遅延 | 元系列、観測時刻、scrape失敗、時計差、device/mountpoint/fstype、容量整合性 |
 | 503 BUSY | タブ数・同時要求、取得期限。上限を無条件に増やさない |
@@ -153,8 +149,8 @@ loopback は同じホストのユーザー / プロセスからのアクセス�
 
 イメージ・依存の脆弱性スキャン、digest 固定、経路監査は配備前に必要。成果物検査は既知の設定名と検査用秘密値の混入を確認するもので、任意の秘密情報の完全検出ではない。build context 許可リストと公開変数無効化を主な保護とする。CSP は script / connect / font を同一オリジンに限定し、既存の React 表示に必要な inline style だけを許可する。
 
-## 01b・01c への引き継ぎ
+## キオスクへの引き継ぎ（後続）
 
-01b で最小 Xorg + xinit/startx と Chromium または Firefox を**ホスト OS に**導入する方式を検討する。専用非特権 kiosk ユーザー、1280×1024、`http://127.0.0.1:18080` を使い、コンテナ IP をブラウザーへ渡さない。Snap の更新・sandbox・起動時間、ブラウザーのパッケージ選択、Xorg の logind / TTY 権限、TTY1 と既存 console の関係を実機で確認する。重量級 desktop / display manager を必要条件にしない。
+後続で最小 Xorg + xinit/startx と Chromium または Firefox を**ホスト OS に**導入する方式を検討する。専用非特権 kiosk ユーザー、1280×1024、`http://127.0.0.1:18080` を使い、コンテナ IP をブラウザーへ渡さない。Snap の更新・sandbox・起動時間、ブラウザーのパッケージ選択、Xorg の logind / TTY 権限、TTY1 と既存 console の関係を実機で確認する。重量級 desktop / display manager を必要条件にしない。
 
-01c で起動順序・API 起動待ち・TTY1 の自動起動・DPMS / 画面消灯防止・ブラウザーの異常終了と restart backoff・profile 所有権・ログサイズ・手動復旧・電源再投入を設計する。ブラウザー再起動後も同じ URL から再取得する。kiosk / Xorg 障害時に SSH・WireGuard・Docker を巻き込まない service 境界と非特権運用を検証する。X11 socket / display device / Docker socket を Web コンテナに渡さない。実時間の連続監視、実機の文字・欠損・鮮度・レイアウト、RAID 表示とサービス収集方式は後続課題。
+後続で起動順序・API 起動待ち・TTY1 の自動起動・DPMS / 画面消灯防止・ブラウザーの異常終了と restart backoff・profile 所有権・ログサイズ・手動復旧・電源再投入を設計する。ブラウザー再起動後も同じ URL から再取得する。kiosk / Xorg 障害時に SSH・WireGuard・Docker を巻き込まない service 境界と非特権運用を検証する。X11 socket / display device / Docker socket を Web コンテナに渡さない。実時間の連続監視、実機の文字・欠損・鮮度・レイアウト、RAID 表示とサービス収集方式は後続課題。

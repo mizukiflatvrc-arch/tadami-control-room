@@ -21,8 +21,7 @@ services:
     environment:
       TCR_WEB_HOST: 0.0.0.0
       TCR_WEB_PORT: "8080"
-    ports:
-      - "127.0.0.1:18080:8080"
+    # Host systemd relay owns 127.0.0.1:18080; no Docker port publishing.
     networks: [frontend]
     depends_on:
       monitoring-api:

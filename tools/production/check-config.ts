@@ -19,7 +19,7 @@ const schema = z.object({
     web: z.object({
       ...common, mem_limit: z.literal('128m'),
       environment: z.object({ TCR_WEB_HOST: z.literal('0.0.0.0'), TCR_WEB_PORT: z.literal('8080') }).strict(),
-      ports: z.tuple([z.literal('127.0.0.1:18080:8080')]), networks: z.tuple([z.literal('frontend')]),
+      networks: z.tuple([z.literal('frontend')]),
       depends_on: z.object({ 'monitoring-api': z.object({ condition: z.literal('service_healthy') }).strict() }).strict(),
     }).strict(),
     'monitoring-api': z.object({

@@ -1,0 +1,55 @@
+[Unit]
+Description=TADAMI localhost Web TCP relay (unprivileged)
+Wants=tadami-web-relay-resolver.service
+After=tadami-web-relay-resolver.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=tadami-web-relay
+Group=tadami-web-relay
+SupplementaryGroups=
+ExecStart=/usr/bin/python3 -E -s -B /usr/local/lib/tadami-web-relay/relay.py
+Restart=on-failure
+RestartSec=5s
+RestartSteps=4
+RestartMaxDelaySec=60s
+TimeoutStopSec=6s
+KillMode=control-group
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_INET
+# Keep host networking: PrivateNetwork would block Docker bridge access.
+PrivateNetwork=no
+ReadOnlyPaths=/run
+InaccessiblePaths=-/run/docker.sock -/var/run/docker.sock
+UMask=0077
+TasksMax=48
+MemoryMax=96M
+CPUQuota=20%
+LimitNOFILE=256
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tadami-web-relay
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=20
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,54 @@
+[Unit]
+Description=TADAMI restricted Docker Web target resolver
+# Ordering only: this service never starts/restarts/stops Docker.
+After=docker.service
+PartOf=tadami-web-relay.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=root
+Group=tadami-web-relay
+SupplementaryGroups=
+ExecStart=/usr/bin/python3 -E -s -B /usr/local/lib/tadami-web-relay/resolve.py
+Restart=on-failure
+RestartSec=5s
+RestartSteps=4
+RestartMaxDelaySec=60s
+TimeoutStopSec=10s
+KillMode=control-group
+RuntimeDirectory=tadami-web-relay
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/run/tadami-web-relay
+InaccessiblePaths=-/run/systemd/private -/run/dbus/system_bus_socket
+UMask=0027
+TasksMax=16
+MemoryMax=128M
+CPUQuota=10%
+LimitNOFILE=64
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tadami-web-relay-resolver
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=20

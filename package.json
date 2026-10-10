@@ -13,6 +13,7 @@
     "build": "npm run typecheck && vite build",
     "build:production": "npm run typecheck && vite build --mode production-api --outDir dist-web && vite build --config vite.server.config.ts && npm run check:production-build",
     "check:web": "node --import tsx tools/production/check-config.ts",
+    "test:relay": "/usr/bin/python3 -B -m unittest discover -s tests/relay -v",
     "check:production-build": "node --import tsx tools/production/check-build.ts",
     "test:production": "playwright test --config playwright.production.config.ts",
     "preview": "vite preview --host 127.0.0.1",
@@ -22,7 +23,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:preview": "playwright test --config playwright.preview.config.ts",
-    "check": "npm run check:monitoring && npm run check:web && npm run typecheck && npm run lint && npm test && npm run build && npm run test:e2e && npm run test:preview && npm run test:api && npm run build:production && npm run test:production",
+    "check": "npm run check:monitoring && npm run check:web && npm run test:relay && npm run typecheck && npm run lint && npm test && npm run build && npm run test:e2e && npm run test:preview && npm run test:api && npm run build:production && npm run test:production",
     "check:monitoring": "node --import tsx tools/monitoring/check-config.ts",
     "test:api": "playwright test --config playwright.api.config.ts"
   },

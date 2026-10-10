@@ -1,5 +1,7 @@
 # ディレクトリ構造
 
+> β0.3 / 01b 更新：`infra/relay/` に resolver / supervisor / 共有ポリシーの3 Python ファイル、2 service unit、sysusers 設定を追加。`tests/relay/` に標準 unittest と実 socat 試験、`docs/localhost-relay.md` に配置・切替・復旧手順を追加。Web Compose はホストポート公開なし。実機切替は未実施。
+
 > β0.3 / 01a 更新：Prometheus / Node Exporter は tadami で実機配備・監査済み（ユーザー報告）。Web / API の本番コンテナ構成と API 固定ビルドを himekami で実装。Web の Docker 起動・実機接続は未実施。[本番配備手順](production-web.md)、[検証記録](verification-beta-0.3-01a.md) を参照。以下の初期設計・β0.1/β0.2 の記述は経緯として保持する。
 
 > β0.1 実装時の補足：以下は初期の配置案。モック版ではこの構造に沿って実装し、取得タイムアウト処理を `src/data/request-snapshot.ts` に追加した。実データ用 `server/`・`src/data/api/` はまだ作成していない。検証記録を `docs/verification.md` に追加した。

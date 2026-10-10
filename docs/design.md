@@ -1,5 +1,7 @@
 # アプリケーション設計
 
+> β0.3 / 01b 更新：手動 socat 経由の Web/API 実データ表示はユーザー確認済み。ホストの非特権リレー・root resolver・systemd 管理を実装し、Web の Docker ポート公開を削除。[恒常リレーの設計・配備手順](localhost-relay.md) を参照。tadami への適用は未実施。
+
 > β0.3 / 01a 更新：Prometheus / Node Exporter は tadami で実機配備・監査済み（ユーザー報告）。Web / API の本番コンテナ構成と API 固定ビルドを himekami で実装。Web の Docker 起動・実機接続は未実施。[本番配備手順](production-web.md)、[検証記録](verification-beta-0.3-01a.md) を参照。以下の初期設計・β0.1/β0.2 の記述は経緯として保持する。
 
 > β0.1 実装時の補足：以下は初期設計を保持した文書。段階 1〜4 のモック版は実装済みで、起動方法は README、検証状況は [verification.md](verification.md) を参照する。「今回は作成しない」等は設計時点の作業範囲を指す。

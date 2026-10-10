@@ -18,7 +18,7 @@ describe('Web コンテナの権限・通信境界', () => {
     ['user', '0:0'], ['cap_add', ['NET_ADMIN']], ['privileged', true], ['network_mode', 'host'],
     ['pid', 'host'], ['devices', ['/dev/dri']], ['read_only', false], ['security_opt', []],
     ['volumes', ['/var/run/docker.sock:/var/run/docker.sock', '/tmp/.X11-unix:/tmp/.X11-unix', '/:/host']],
-    ['ports', ['0.0.0.0:18080:8080']], ['ports', ['127.0.0.1:9090:9090']],
+    ['ports', ['0.0.0.0:18080:8080']], ['ports', ['127.0.0.1:18080:8080']], ['ports', ['127.0.0.1:9090:9090']],
     ['networks', ['frontend', 'monitoring']], ['mem_limit', '4g'], ['cpus', 4], ['logging', { driver: 'none' }],
     ['environment', { TCR_WEB_HOST: '0.0.0.0', TCR_WEB_PORT: '8080', VITE_PROMETHEUS_URL: 'http://prometheus:9090' }],
   ])('Web への危険な設定を拒否: %s', (key, value) => {
